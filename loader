@@ -1,0 +1,110 @@
+#!/usr/bin/env python
+#
+# ViaQ logging load generator
+#
+# Copyright 2018 Red Hat, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+from __future__ import print_function
+
+import sys
+import time
+import uuid
+import random
+import string
+import logging
+import logging.handlers
+import argparse
+
+
+def msgsizgen(mean, stddev = 32):
+    '''Generate a series of random numbers with a Guassian distribution,
+       where the mean and standard deviation are given arguments.
+
+       The mean is a required parameter, while the stddev will default to
+       32.
+
+       The generator will yield numbers continuously.
+    '''
+    randomizer = random.Random()
+    while True:
+        yield int(round(randomizer.gauss(mean, stddev)))
+
+
+def load(invocid, size, output_method, report_method, report_interval=(10000,1), seq_width=10, chars=string.ascii_lowercase + string.digits):
+    '''Emit a formatted payload of random bytes, using a Gaussian
+       distribution using a given size as the mean.  The payload
+       is emitted using the output_method function, while statistics
+       about the output rate are reported through the report_method.
+
+       The reports are generated once every 10,000 payloads, no
+       more than once a second by default. Both parameters can be
+       changed by the caller.
+
+       The generated sequence number defaults to a width of 10.
+
+       The invocation ID, invocid, is required from the caller to
+       facilitate finding the output emitted by this instance.
+    '''
+    sep = ' - '
+    sep_len = len(sep)
+    seq = 0
+    start = past = time.time()
+    msgs = 0
+    prefix = "loader seq - %s - " % invocid
+    prefix_len = len(prefix)
+    sub_len = (prefix_len + seq_width + sep_len)
+    try:
+        for asize in msgsizgen(size):
+            asize -= sub_len
+            asize = 1 if asize <= 0 else asize
+            msg = ''.join(random.choice(chars) for x in range(asize))
+            seq += 1
+            msgs += 1
+            output_method("%s%0*d%s%s" % (prefix, seq_width, seq, sep, msg))
+            if seq % report_interval[0] == 0:
+                now = time.time()
+                diff = now - past
+                if (diff > report_interval[1]):
+                    msg_rate = msgs / diff
+                    total_msg_rate = seq / (now - start)
+                    report_method("loader stat: %0*d %10.2f %10.2f" % (seq_width, seq, msg_rate, total_msg_rate))
+                    past = now
+                    msgs = 0
+    except KeyboardInterrupt:
+        pass
+
+if __name__ == '__main__':
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(module)s.%(funcName)s: %(message)s')
+    try:
+        handler = logging.handlers.SysLogHandler(address = '/dev/log')
+        handler.setFormatter(formatter)
+    except Exception:
+        consoleHandler = logging.StreamHandler()
+        consoleHandler.setFormatter(formatter)
+        log.addHandler(consoleHandler)
+    else:
+        log.addHandler(handler)
+
+    parser = argparse.ArgumentParser(description='Message payload generator.')
+    parser.add_argument('payload_size', metavar='SIZE', type=int, nargs='?', default=1024,
+			help='an integer specifying the mean size of the payload using a Gaussian distribution')
+    parser.add_argument('--invocid', dest='invocid', action='store', default=uuid.uuid4().hex,
+			help='Invocation ID string to use (defaults to 32 char generated one)')
+    args = parser.parse_args()
+
+    load(args.invocid, args.payload_size, print, log.info)
