@@ -53,7 +53,7 @@ def msgsizgen_gaussian(mean, stddev = 32):
         yield int(round(randomizer.gauss(mean, stddev)))
 
 
-dist_methods = { 'fixed': msgsizgen_fixed, 'gaussian': msgsizgen_gaussian }
+dist_methods = { 'fixed': msgsizgen_fixed, 'gaussian': msgsizgen_gaussian, 'normal': msgsizgen_gaussian }
 
 
 def load(invocid, size, output_method, report_method, dist='gaussian', report_interval=(10000,1), seq_width=10, chars=string.ascii_lowercase + string.digits):
@@ -119,7 +119,7 @@ if __name__ == '__main__':
 			help='an integer specifying the mean size of the payload using a Gaussian distribution')
     parser.add_argument('--distribution', metavar='DIST', dest='payload_dist', action='store',
             default='gaussian', choices=dist_methods,
-            help='the size distribution to use, e.g. "gaussian" (default) or "fixed"')
+            help='the size distribution to use, e.g. "gaussian" (default), "normal" (alias for gaussian), or "fixed"')
     parser.add_argument('--invocid', metavar='INVOCID', dest='invocid', action='store',
             default=uuid.uuid4().hex,
 			help='Invocation ID string to use (defaults to 32 char generated one)')
