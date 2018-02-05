@@ -29,6 +29,9 @@ import logging.handlers
 import argparse
 
 
+DEFAULT_STDDEV = 32
+
+
 def msgsizgen_fixed(mean, stddev = None):
     '''Generate a series of "fixed" sizes, always yielding the given
        "mean" as the value.
@@ -39,7 +42,7 @@ def msgsizgen_fixed(mean, stddev = None):
         yield mean
 
 
-def msgsizgen_gaussian(mean, stddev = 32):
+def msgsizgen_gaussian(mean, stddev = DEFAULT_STDDEV):
     '''Generate a series of random numbers with a Guassian distribution,
        where the mean and standard deviation are given arguments.
 
@@ -56,7 +59,7 @@ def msgsizgen_gaussian(mean, stddev = 32):
 dist_methods = { 'fixed': msgsizgen_fixed, 'gaussian': msgsizgen_gaussian, 'normal': msgsizgen_gaussian }
 
 
-def load(invocid, size, output_method, report_method, dist='gaussian', report_interval=(10000,1), seq_width=10, chars=string.ascii_lowercase + string.digits):
+def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DEFAULT_STDDEV, report_interval=(10000,1), seq_width=10, chars=string.ascii_lowercase + string.digits):
     '''Emit a formatted payload of random bytes, using a Gaussian
        distribution using a given size as the mean.  The payload
        is emitted using the output_method function, while statistics
@@ -81,7 +84,7 @@ def load(invocid, size, output_method, report_method, dist='gaussian', report_in
     prefix_len = len(prefix)
     sub_len = (prefix_len + seq_width + sep_len)
     try:
-        for asize in msgsizgen(size):
+        for asize in msgsizgen(size, stddev):
             asize -= sub_len
             asize = 1 if asize <= 0 else asize
             msg = ''.join(random.choice(chars) for x in range(asize))
@@ -115,14 +118,18 @@ if __name__ == '__main__':
         log.addHandler(handler)
 
     parser = argparse.ArgumentParser(description='Message payload generator.')
-    parser.add_argument('payload_size', metavar='SIZE', type=int, nargs='?', default=1024,
+    parser.add_argument('payload_size', metavar='SIZE', type=int, nargs='?',
+            default=1024,
 			help='an integer specifying the mean size of the payload using a Gaussian distribution')
     parser.add_argument('--distribution', metavar='DIST', dest='payload_dist', action='store',
             default='gaussian', choices=dist_methods,
             help='the size distribution to use, e.g. "gaussian" (default), "normal" (alias for gaussian), or "fixed"')
     parser.add_argument('--invocid', metavar='INVOCID', dest='invocid', action='store',
             default=uuid.uuid4().hex,
-			help='Invocation ID string to use (defaults to 32 char generated one)')
+			help='the unique invocation ID string to use (defaults to 32 char generated one)')
+    parser.add_argument('--stddev', metavar='STDDEV', dest='stddev', type=float,
+            default=DEFAULT_STDDEV,
+            help='the standard deviation to use with a random distribution (defaults to 32)')
     args = parser.parse_args()
 
-    load(args.invocid, args.payload_size, print, log.info, dist=args.payload_dist)
+    load(args.invocid, args.payload_size, print, log.info, dist=args.payload_dist, stddev=args.stddev)
