@@ -99,3 +99,6 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# Ignore loader copied to Docker directory for build
+Docker/loader
