@@ -77,9 +77,6 @@ def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DE
     msgsizgen = dist_methods[dist]
     sep = ' - '
     sep_len = len(sep)
-    seq = 0
-    start = past = time.time()
-    msgs = 0
     prefix = "loader seq - %s - " % invocid
     prefix_len = len(prefix)
     sub_len = (prefix_len + seq_width + sep_len)
@@ -87,32 +84,58 @@ def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DE
         msgperiod = (1/msgpersec, time.time() + 1/msgpersec, msgpersec)
     else:
         msgperiod = None
+
+
+    class StatsCtx(object):
+
+        def __init__(self):
+            self.start = self.past = time.time()
+            self.seq = 0
+            self.msgs = 0
+
+        def statstr(self, now, msgperiod):
+            msg_rate = self.msgs / (now - self.past)
+            total_msg_rate = self.seq / (now - self.start)
+            if msgperiod:
+                if msg_rate < (msgperiod[2] - 0.50):
+                    notice = " (too slow, %.4f)" % msgperiod[2]
+                elif msg_rate > (msgperiod[2] + 0.50):
+                    notice = " (too fast, %.4f)" % msgperiod[2]
+                else:
+                    notice = ""
+            else:
+                notice = ""
+            self.past = now
+            self.msgs = 0
+            return "%.3fs %0*d %10.3f%s %10.3f" % (now, seq_width, self.seq, msg_rate, notice, total_msg_rate)
+
+    stats = StatsCtx()
     try:
         for asize in msgsizgen(size, stddev):
             asize -= sub_len
-            asize = 1 if asize <= 0 else asize
-            msg = ''.join(random.choice(chars) for x in range(asize))
-            seq += 1
-            msgs += 1
-            output_method("%s%0*d%s%s" % (prefix, seq_width, seq, sep, msg))
-            if seq % report_interval[0] == 0:
+            stats.seq += 1
+            stats.msgs += 1
+            if report_method is None and (stats.seq % report_interval[0]) == 0:
+                # Reporting is done inline as part of a sequence message.
                 now = time.time()
-                diff = now - past
-                if (diff > report_interval[1]):
-                    msg_rate = msgs / diff
-                    total_msg_rate = seq / (now - start)
-                    if msgperiod:
-                        if msg_rate < (msgperiod[2] - 0.50):
-                            notice = " (too slow, %.4f)" % msgperiod[2]
-                        elif msg_rate > (msgperiod[2] + 0.50):
-                            notice = " (too fast, %.4f)" % msgperiod[2]
-                        else:
-                            notice = ""
-                    else:
-                        notice = ""
-                    report_method("loader stat: %0*d %10.3f%s %10.3f" % (seq_width, seq, msg_rate, notice, total_msg_rate))
-                    past = now
-                    msgs = 0
+                if (now - stats.past > report_interval[1]):
+                    stats_msg = "(stats: %s) " % stats.statstr(now, msgperiod)
+                    stats_msg_len = len(stats_msg)
+                else:
+                    stats_msg = ""
+                    stats_msg_len = 0
+            else:
+                stats_msg = ""
+                stats_msg_len = 0
+            asize -= stats_msg_len
+            asize = 1 if asize <= 0 else asize
+            msg = stats_msg + ''.join(random.choice(chars) for x in range(asize))
+            output_method("%s%0*d%s%s" % (prefix, seq_width, stats.seq, sep, msg))
+            if report_method is not None and (stats.seq % report_interval[0]) == 0:
+                # Reporting is done out-of-band.
+                now = time.time()
+                if (now - stats.past > report_interval[1]):
+                    report_method("loader stat: %s" % stats.statstr(now, msgperiod))
             if msgperiod is not None:
                 now = time.time()
                 if now >= msgperiod[1]:
@@ -159,8 +182,8 @@ if __name__ == '__main__':
             default='stdout',
             help='where to emit the output, one of: "stdout", "stderr", "syslog", "<file name>" (defaults to "stdout")')
     parser.add_argument('--report', metavar='METHOD', dest='report', action='store',
-            default='stderr',
-            help='where to emit the report output, one of: "stdout", "stderr", "syslog", "<file name>" (defaults to "stderr")')
+            default='inline',
+            help='where to emit the report output, one of: "inline", "stdout", "stderr", "syslog", "<file name>" (defaults to "inline")')
     parser.add_argument('--msgpersec', metavar='MSGPERSEC', dest='msgpersec', type=float,
             default=0,
             help='the # of logs per second (floating point) to emit (defaults to 0, unlimited)')
@@ -183,7 +206,9 @@ if __name__ == '__main__':
         output_method = output_closure
 
     # Determine the report method to use
-    if args.report == 'syslog':
+    if args.report == 'inline':
+        report_method = None
+    elif args.report == 'syslog':
         report_method = log.info
     else:
         if args.report in ('stderr', 'stdout'):
