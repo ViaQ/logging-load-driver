@@ -64,8 +64,9 @@ class StatsCtx(object):
         self.msgs = 0
         self.total_size = 0
         self.report_size = 0
+        self.msgpersec = msgpersec
         if msgpersec > 0:
-            self.msgperiod = (1/msgpersec, self.start + 1/msgpersec, msgpersec)
+            self.msgperiod = (1/msgpersec, self.start)
         else:
             self.msgperiod = None
         self.rptint = rptint * (1024 * 1024)
@@ -77,15 +78,13 @@ class StatsCtx(object):
         self.report_size += size
         if self.msgperiod is not None:
             now = time.time()
-            if now >= self.msgperiod[1]:
-                # We have exited our rate-limit window, calculate next
-                # window and continue
-                self.msgperiod = (self.msgperiod[0], self.msgperiod[1] + self.msgperiod[0], self.msgperiod[2])
-            # Wait until our window is up
-            while now < msgperiod[1]:
+            while now < self.msgperiod[1]:
                 sleep_window = self.msgperiod[1] - now
                 time.sleep(sleep_window)
                 now = time.time()
+            # We have exited our rate-limit window, calculate next
+            # window and continue
+            self.msgperiod = (self.msgperiod[0], self.msgperiod[1] + self.msgperiod[0])
         if self.report_size > self.rptint:
             report = True
             self.report_size = 0
@@ -97,11 +96,11 @@ class StatsCtx(object):
         now = time.time()
         msg_rate = self.msgs / (now - self.past)
         total_msg_rate = self.seq / (now - self.start)
-        if self.msgperiod:
-            if msg_rate < (self.msgperiod[2] - 0.50):
-                notice = " (too slow, %.4f)" % self.msgperiod[2]
-            elif msg_rate > (self.msgperiod[2] + 0.50):
-                notice = " (too fast, %.4f)" % self.msgperiod[2]
+        if self.msgperiod is not None:
+            if msg_rate < (self.msgpersec - 0.50):
+                notice = " (too slow, %d)" % self.msgpersec
+            elif msg_rate > (self.msgpersec + 0.50):
+                notice = " (too fast, %d)" % self.msgpersec
             else:
                 notice = ""
         else:
