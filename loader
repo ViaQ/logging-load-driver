@@ -113,7 +113,7 @@ class StatsCtx(object):
 dist_methods = { 'fixed': msgsizgen_fixed, 'gaussian': msgsizgen_gaussian, 'normal': msgsizgen_gaussian }
 
 
-def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DEFAULT_STDDEV, report_interval=10, seq_width=10, chars=string.ascii_lowercase + string.digits, msgpersec=0):
+def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DEFAULT_STDDEV, report_interval=10, seq_width=10, chars=string.ascii_lowercase + string.digits, msgpersec=0, total_size=0):
     '''Emit a formatted payload of random bytes, using a Gaussian
        distribution using a given size as the mean.  The payload
        is emitted using the output_method function, while statistics
@@ -139,7 +139,7 @@ def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DE
     try:
         for asize, seq, report in msgsizgen(stats, size, stddev):
             asize -= sub_len
-            if report_method is None and report:
+            if report_method is None and (report or stats.total_size > total_size * (1024 * 1024)):
                 # Reporting is done inline as part of a sequence message payload.
                 stats_msg = "(stats: %s) " % stats.statstr(seq_width)
                 stats_msg_len = len(stats_msg)
@@ -153,6 +153,12 @@ def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DE
             if report_method is not None and report:
                 # Reporting is done out-of-band.
                 report_method("loader stat: %s" % stats.statstr(seq_width))
+            if stats.total_size > total_size * (1024 * 1024):
+                # We're done
+                if report_method is not None and not report:
+                    # Reporting is done out-of-band.
+                    report_method("loader stat: %s" % stats.statstr(seq_width))
+                break
     except KeyboardInterrupt:
         pass
 
@@ -196,6 +202,9 @@ if __name__ == '__main__':
     parser.add_argument('--report-interval', metavar='INTERVAL', dest='reportint', type=int,
             default=10,
             help='the # of megabytes of message data between reports (defaults to 10 MB)')
+    parser.add_argument('--total-size', metavar='TOTSIZE', dest='totalsize', type=int,
+            default=0,
+            help='the total # of megabytes to generate before ending (defaults to 0, unlimited)')
     args = parser.parse_args()
 
     # Determine the output method to emit logs
@@ -228,4 +237,4 @@ if __name__ == '__main__':
 
     load(args.invocid, args.payload_size, output_method, report_method,
             dist=args.payload_dist, stddev=args.stddev, msgpersec=args.msgpersec,
-            report_interval=args.reportint)
+            report_interval=args.reportint, total_size=args.totalsize)
