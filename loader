@@ -249,6 +249,7 @@ if __name__ == '__main__':
             rfp = open(args.report, "w")
         def report_closure(payload):
             rfp.write(payload + '\n')
+            rfp.flush()
         report_method = report_closure
 
     load(args.invocid, args.payload_size, output_method, report_method,
