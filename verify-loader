@@ -18,9 +18,10 @@
 #
 
 import sys
+import argparse
 from collections import defaultdict
 
-REPORT_EVERY = 100
+REPORT_INTERVAL = 10
 
 
 class Context(object):
@@ -31,12 +32,16 @@ class Context(object):
         self.skips = 0
 
 
-def verify(input_gen):
+def verify(input_gen, report_interval=REPORT_INTERVAL):
     ignores = 0
+    total_bytes = 0
+    report_bytes_incr = report_interval * (1024 * 1024)
+    report_bytes_target = report_bytes_incr
     contexts = defaultdict(Context)
 
     try:
         for line in input_gen:
+            total_bytes += len(line)
             if not line.startswith("loader seq - "):
                 ignores += 1
                 continue
@@ -61,9 +66,10 @@ def verify(input_gen):
                     # Since the sequence jumped ahead, save the new value as the
                     # previous in order to be sure to stay with the jump.
                     ctx.prev = seq
-            if ctx.count and (ctx.count % REPORT_EVERY) == 0:
+            if report_bytes_target > 0 and total_bytes > report_bytes_target:
                 print "%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates)
                 sys.stdout.flush()
+                report_bytes_target += report_bytes_incr
     except KeyboardInterrupt:
         pass
     finally:
@@ -73,6 +79,13 @@ def verify(input_gen):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Message payload generator.')
+    parser.add_argument('files', metavar='FILE', nargs='*', help='files to read, if empty, stdin is used')
+    parser.add_argument('--report-interval', metavar='INTERVAL', dest='reportint', type=int,
+            default=REPORT_INTERVAL,
+            help='the # of megabytes of message data between reports (defaults to 10 MB)')
+    args = parser.parse_args()
+
     import fileinput
-    input_gen = fileinput.input()
-    verify(input_gen)
+    input_gen = fileinput.input(args.files)
+    verify(input_gen, args.reportint)
