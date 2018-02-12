@@ -18,6 +18,7 @@
 #
 
 import sys
+import time
 import argparse
 from collections import defaultdict
 
@@ -33,31 +34,37 @@ class Context(object):
 
 
 def verify(input_gen, report_interval=REPORT_INTERVAL):
+    ret_val = 0
     ignores = 0
+    ignored_bytes = 0
     total_bytes = 0
     report_bytes_incr = report_interval * (1024 * 1024)
     report_bytes_target = report_bytes_incr
     contexts = defaultdict(Context)
+    start = time.time()
 
     try:
         for line in input_gen:
-            total_bytes += len(line)
+            line_len = len(line)
+            total_bytes += line_len
             if not line.startswith("loader seq - "):
+                ignored_bytes = line_len
                 ignores += 1
                 continue
 
-            _, invocid, val, payload = line.split('-', 4)
+            _, invocid, seqval, payload = line.split('-', 4)
+            invocid = invocid.strip()
             ctx = contexts[invocid]
             ctx.count += 1
-            seq = int(val)
+            seq = int(seqval)
             if ctx.prev is None:
                 ctx.prev = seq
-                continue
-            if seq == (ctx.prev + 1):
+            elif seq == (ctx.prev + 1):
                 # normal and expected code path
                 ctx.prev = seq
             else:
                 print "%s: %d %d  <-" % (invocid, seq, ctx.prev)
+                sys.stdout.flush()
                 if seq <= ctx.prev:
                     ctx.duplicates += 1
                 else:
@@ -66,16 +73,48 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                     # Since the sequence jumped ahead, save the new value as the
                     # previous in order to be sure to stay with the jump.
                     ctx.prev = seq
+            if payload.startswith(" (stats:"):
+                try:
+                    stats, _ = payload.rsplit(' ', 1)
+                    rawvals = stats.strip()[:-1].split(' ')
+                    vals = []
+                    for val in rawvals:
+                        if val:
+                            vals.append(val)
+                    timestamp, statseq, lclrate, gblrate = vals[1], vals[2], vals[3], vals[4]
+                except Exception:
+                    print "Error: ", payload
+                else:
+                    statseq = int(statseq)
+                    assert seq == statseq
+                    assert timestamp[-1] == 's'
+                    timestamp = float(timestamp[:-1])
+                    lclrate = float(lclrate)
+                    gblrate = float(gblrate)
+                    now = time.time()
+                    print "%s: %.2f (%5.2f) %12.3f %12.3f %d %d %d %d" % (invocid, timestamp, now - timestamp, lclrate, gblrate, statseq, ctx.count, ctx.skips, ctx.duplicates)
             if report_bytes_target > 0 and total_bytes > report_bytes_target:
-                print "%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates)
+                print "\n+++\nverify total read rate: %.3f" % (total_bytes / (time.time() - start))
+                for invocid,ctx in contexts.items():
+                    print "%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates)
+                print "---"
                 sys.stdout.flush()
                 report_bytes_target += report_bytes_incr
     except KeyboardInterrupt:
         pass
     finally:
+        print "\n+++\nverify total read rate: %.3f" % (total_bytes / (time.time() - start))
+        tot_skips = 0
+        tot_dupes = 0
         for invocid,ctx in contexts.items():
             print "%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates)
+            tot_skips += ctx.skips
+            tot_dupes += ctx.duplicates
+        print "---"
         sys.stdout.flush()
+        if tot_skips + tot_dupes > 0:
+            ret_val = 1
+    return ret_val
 
 
 if __name__ == '__main__':
@@ -88,4 +127,4 @@ if __name__ == '__main__':
 
     import fileinput
     input_gen = fileinput.input(args.files)
-    verify(input_gen, args.reportint)
+    sys.exit(verify(input_gen, args.reportint))

@@ -1,0 +1,45 @@
+#!/bin/bash
+
+TOTAL_SIZE=50
+REPORT_SIZE=10
+
+function run_loader_devnull() {
+    echo ./loader --output=/dev/null --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+         ./loader --output=/dev/null --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+}
+
+function run_loader_diskfile_w_verify() {
+    echo ./loader --output=/tmp/run_loader_diskfile --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+         ./loader --output=/tmp/run_loader_diskfile --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+    ./verify-loader --report-interval=0 /tmp/run_loader_diskfile
+    rm -f /tmp/run_loader_diskfile
+}
+
+function run_loader_pipe_w_verify() {
+    echo ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+         ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1 | ./verify-loader --report-interval=0
+}
+
+for pgen in fixed random ; do
+    for dist in normal fixed ; do
+        for size in 128 256 512 1024 2048 4096 8192 ; do
+            run_loader_devnull $size $pgen $dist
+        done
+    done
+done
+
+for pgen in fixed random ; do
+    for dist in normal fixed ; do
+        for size in 128 256 512 1024 2048 4096 8192 ; do
+            run_loader_diskfile_w_verify $size $pgen $dist
+        done
+    done
+done
+
+for pgen in fixed random ; do
+    for dist in normal fixed ; do
+        for size in 128 256 512 1024 2048 4096 8192 ; do
+            run_loader_pipe_w_verify $size $pgen $dist
+        done
+    done
+done
