@@ -149,31 +149,28 @@ def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DE
     sub_len = (prefix_len + seq_width + sep_len)
 
     stats = StatsCtx(msgpersec, report_interval)
-    try:
-        for asize, seq, report in msgsizgen(stats, size, stddev):
-            asize -= sub_len
-            if report_method is None and (report or (total_size > 0 and stats.total_size > total_size * (1024 * 1024))):
-                # Reporting is done inline as part of a sequence message payload.
-                stats_msg = "(stats: %s) " % stats.statstr(seq_width)
-                stats_msg_len = len(stats_msg)
-            else:
-                stats_msg = ""
-                stats_msg_len = 0
-            asize -= stats_msg_len
-            asize = 1 if asize <= 0 else asize
-            msg = stats_msg + payloadgen(asize)
-            output_method("%s%0*d%s%s" % (prefix, seq_width, seq, sep, msg))
-            if report_method is not None and report:
+    for asize, seq, report in msgsizgen(stats, size, stddev):
+        asize -= sub_len
+        if report_method is None and (report or (total_size > 0 and stats.total_size > total_size * (1024 * 1024))):
+            # Reporting is done inline as part of a sequence message payload.
+            stats_msg = "(stats: %s) " % stats.statstr(seq_width)
+            stats_msg_len = len(stats_msg)
+        else:
+            stats_msg = ""
+            stats_msg_len = 0
+        asize -= stats_msg_len
+        asize = 1 if asize <= 0 else asize
+        msg = stats_msg + payloadgen(asize)
+        output_method("%s%0*d%s%s" % (prefix, seq_width, seq, sep, msg))
+        if report_method is not None and report:
+            # Reporting is done out-of-band.
+            report_method("loader stat: %s" % stats.statstr(seq_width))
+        if total_size > 0 and (stats.total_size > total_size * (1024 * 1024)):
+            # We're done
+            if report_method is not None and not report:
                 # Reporting is done out-of-band.
                 report_method("loader stat: %s" % stats.statstr(seq_width))
-            if total_size > 0 and (stats.total_size > total_size * (1024 * 1024)):
-                # We're done
-                if report_method is not None and not report:
-                    # Reporting is done out-of-band.
-                    report_method("loader stat: %s" % stats.statstr(seq_width))
-                break
-    except KeyboardInterrupt:
-        pass
+            break
 
 
 if __name__ == '__main__':
@@ -226,6 +223,7 @@ if __name__ == '__main__':
     # Determine the output method to emit logs
     if args.output == 'syslog':
         output_method = log.debug
+        ofp = None
     else:
         if args.output in ('stderr', 'stdout'):
             ofp = getattr(sys, args.output)
@@ -239,8 +237,10 @@ if __name__ == '__main__':
     # Determine the report method to use
     if args.report == 'inline':
         report_method = None
+        rfp = None
     elif args.report == 'syslog':
         report_method = log.info
+        rfp = None
     else:
         if args.report in ('stderr', 'stdout'):
             rfp = getattr(sys, args.report)
@@ -252,7 +252,15 @@ if __name__ == '__main__':
             rfp.flush()
         report_method = report_closure
 
-    load(args.invocid, args.payload_size, output_method, report_method,
-            dist=args.payload_dist, stddev=args.stddev, msgpersec=args.msgpersec,
-            report_interval=args.reportint, total_size=args.totalsize,
-            payload_gen=args.payload_gen)
+    try:
+        load(args.invocid, args.payload_size, output_method, report_method,
+                dist=args.payload_dist, stddev=args.stddev, msgpersec=args.msgpersec,
+                report_interval=args.reportint, total_size=args.totalsize,
+                payload_gen=args.payload_gen)
+    except KeyboardInterrupt:
+        if ofp:
+            ofp.flush()
+            ofp.close()
+        if rfp:
+            rfp.flush()
+            rfp.close()
