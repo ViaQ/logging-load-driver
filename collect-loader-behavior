@@ -20,8 +20,25 @@ function run_loader_pipe_w_verify() {
          ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1 | ./verify-loader --report-interval=0
 }
 
+function run_loader_journal_via_syslog_w_verify() {
+    echo ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
+    fifoname="/tmp/loader.output.fifo.$$"
+    mkfifo $fifoname
+    journalctl --user --since=now -f --output=cat > $fifoname &
+    jctlpid=$!
+    ./verify-loader --report-interval=0 $fifoname &
+    verpid=$!
+    trap "kill -TERM $jctlpid $verpid 2>/dev/null; rm -f $fifoname" INT
+         ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
+    sleep 1
+    kill -TERM $jctlpid 2>/dev/null
+    wait $verpid 2>/dev/null
+    rm -f $fifoname
+    trap - INT
+}
+
 for pgen in fixed random ; do
-    for dist in normal fixed ; do
+    for dist in fixed normal ; do
         for size in 128 256 512 1024 2048 4096 8192 ; do
             run_loader_devnull $size $pgen $dist
         done
@@ -29,7 +46,7 @@ for pgen in fixed random ; do
 done
 
 for pgen in fixed random ; do
-    for dist in normal fixed ; do
+    for dist in fixed normal ; do
         for size in 128 256 512 1024 2048 4096 8192 ; do
             run_loader_diskfile_w_verify $size $pgen $dist
         done
@@ -37,9 +54,17 @@ for pgen in fixed random ; do
 done
 
 for pgen in fixed random ; do
-    for dist in normal fixed ; do
+    for dist in fixed normal ; do
         for size in 128 256 512 1024 2048 4096 8192 ; do
             run_loader_pipe_w_verify $size $pgen $dist
+        done
+    done
+done
+
+for pgen in fixed random ; do
+    for dist in fixed normal ; do
+        for size in 128 256 512 1024 2048 4096 8192 ; do
+            run_loader_journal_via_syslog_w_verify $size $pgen $dist
         done
     done
 done
