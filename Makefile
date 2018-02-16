@@ -1,7 +1,7 @@
-all: Docker/loader build
+all: build
 
 Docker/loader: loader
 	cp loader Docker/loader
 
-build:
+build: Docker/loader
 	docker build -t logging-load-driver Docker
