@@ -21,11 +21,19 @@ import sys
 import os
 import time
 import argparse
+import signal
 from collections import defaultdict
 
 REPORT_INTERVAL = 10
 MB = 1024 * 1024
 
+# if running verify-loader as a background process,
+# we can still do a kill -2 $pid to make it exit
+# the main loop and print the stats
+def handle_sig_int(signum, frame):
+    raise KeyboardInterrupt
+
+signal.signal(signal.SIGINT, handle_sig_int)
 
 class Context(object):
 
