@@ -1,57 +1,63 @@
 #!/bin/bash
 
-TOTAL_SIZE=5
-REPORT_SIZE=1
+TOTAL_SIZE=200
+REPORT_SIZE=40
+
+function get_invocid {
+    echo "${1}/t_${TOTAL_SIZE}MB/r_${REPORT_SIZE}MB/d_$4/p_$3/s_$2"
+}
 
 function run_loader_devnull() {
-    echo ./loader --output=/dev/null --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
-         ./loader --output=/dev/null --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+    echo   loader --invocid="$(get_invocid devnull $1 $2 $3)" --output=/dev/null --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+         ./loader --invocid="$(get_invocid devnull $1 $2 $3)" --output=/dev/null --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
 }
 
 function run_loader_diskfile_w_verify() {
-    echo ./loader --output=/tmp/run_loader_diskfile --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
-         ./loader --output=/tmp/run_loader_diskfile --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+    echo   loader --invocid="$(get_invocid diskfile $1 $2 $3)" --output=/tmp/run_loader_diskfile --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+         ./loader --invocid="$(get_invocid diskfile $1 $2 $3)" --output=/tmp/run_loader_diskfile --report=stderr --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
     ./verify-loader --report-interval=0 /tmp/run_loader_diskfile
     rm -f /tmp/run_loader_diskfile
 }
 
 function run_loader_pipe_w_verify() {
-    echo ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
-         ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1 | ./verify-loader --report-interval=0
+    echo   loader --invocid="$(get_invocid pipe $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+         ./loader --invocid="$(get_invocid pipe $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1 | ./verify-loader --report-interval=0
 }
 
 function run_loader_journal_via_systemdcat_w_verify() {
-    # FIXME: it appears that systemd-cat somehow creates duplicates!
-    echo                                ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
-    fifoname="/tmp/loader.output.fifo.$$"
-    mkfifo $fifoname
-    journalctl --user --since=now -f --output=cat > $fifoname &
-    jctlpid=$!
-    ./verify-loader --report-interval=0 $fifoname &
+    # FIXME: it appears that systemd-cat some how creates duplicates!
+    echo                                  loader --invocid="$(get_invocid journal $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+    ./verify-loader --report-interval=0 --read-journal &
     verpid=$!
-    trap "kill -TERM $jctlpid $verpid 2>/dev/null; rm -f $fifoname" INT
-    systemd-cat --identifier=viaqloader ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
-    sleep 1
-    kill -TERM $jctlpid 2>/dev/null
+    trap "kill -TERM $verpid 2>/dev/null" INT
+    systemd-cat --identifier=viaqloader ./loader --invocid="$(get_invocid journal $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+    sleep 5
+    kill -TERM $verpid 2>/dev/null
     wait $verpid 2>/dev/null
-    rm -f $fifoname
     trap - INT
 }
 
 function run_loader_journal_via_syslog_w_verify() {
-    echo ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
-    fifoname="/tmp/loader.output.fifo.$$"
-    mkfifo $fifoname
-    journalctl --user --since=now -f --output=cat > $fifoname &
-    jctlpid=$!
-    ./verify-loader --report-interval=0 $fifoname &
+    echo   loader --invocid="$(get_invocid syslog $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
+    ./verify-loader --report-interval=0 --read-journal &
     verpid=$!
-    trap "kill -TERM $jctlpid $verpid 2>/dev/null; rm -f $fifoname" INT
-         ./loader --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
+    trap "kill -TERM $verpid 2>/dev/null" INT
+         ./loader --invocid="$(get_invocid syslog $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
     sleep 1
-    kill -TERM $jctlpid 2>/dev/null
+    kill -TERM $verpid 2>/dev/null
     wait $verpid 2>/dev/null
-    rm -f $fifoname
+    trap - INT
+}
+
+function run_loader_journal_via_docker_w_verify() {
+    echo                                     loader --invocid="$(get_invocid docker $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1
+    ./verify-loader --report-interval=0 --read-journal &
+    verpid=$!
+    trap "kill -TERM $verpid 2>/dev/null" INT
+    cid=$(docker run -d logging-load-driver /loader --invocid="$(get_invocid docker $1 $2 $3)" --distribution=$3 --payload-gen=$2 --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE $1)
+    docker wait $cid > /dev/null 2>&1; sleep 1
+    kill -TERM $verpid 2>/dev/null
+    wait $verpid 2>/dev/null
     trap - INT
 }
 
@@ -91,6 +97,14 @@ for pgen in fixed random ; do
     for dist in fixed normal ; do
         for size in 128 256 512 1024 2048 4096 8192 ; do
             run_loader_journal_via_syslog_w_verify $size $pgen $dist
+        done
+    done
+done
+
+for pgen in fixed random ; do
+    for dist in fixed normal ; do
+        for size in 128 256 512 1024 2048 4096 8192 ; do
+            run_loader_journal_via_docker_w_verify $size $pgen $dist
         done
     done
 done
