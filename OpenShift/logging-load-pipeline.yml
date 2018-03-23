@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Template
+labels:
+  application: logging-load-driver-pipeline
+metadata:
+  name: logging-load-driver-pipeline
+parameters:
+- description: Logging Load Driver Application source URI
+  name: GIT_REPO_URL
+  required: true
+  value: https://github.com/Freddy-Montero/logging-load-driver.git
+- description: Logging Load Driver Application source reference
+  name: GIT_REPO_BRANCH
+  required: true
+  value: master
+- description: Git commit of image
+  name: GIT_COMMIT
+  required: true
+  value: HEAD
+- description: Git context directory
+  name: GIT_CONTEXT_DIR
+  required: true
+  value: "/"
+- name: GITHUB_SECRET
+  description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
+  displayName: GitHub Webhook Secret
+  generate: expression
+  from: "[a-zA-Z0-9]{40}"
+- name: GENERIC_WEBHOOK_SECRET
+  displayName: Generic Webhook Secret,
+  description: A secret string used to configure the Generic webhook.
+  generate: expression
+  from: "[a-zA-Z0-9]{40}"
+- description: The name for the application
+  name: MICROSERVICE_NAME
+  required: true
+  value: logging-load-driver
+- description: Name of the application the microservice belongs to
+  name: APPLICATION_NAME
+  required: true
+  value: logging-load-driver
+- description: ID of the application the microservice belongs to
+  name: APPLICATION_ID
+  required: true
+  value: LogSmasher
+- description: The requested CPU for a build
+  name: BUILD_CPU_REQUEST
+  required: true
+  value: "200m"
+- description: The limit of CPU to allow for a build
+  name: BUILD_CPU_LIMIT
+  required: true
+  value: "2000m"
+- description: The requested memory for a build
+  name: BUILD_MEM_REQUEST
+  required: true
+  value: "1600Mi"
+- description: The limit of memory to allow for a build
+  name: BUILD_MEM_LIMIT
+  required: true
+  value: "1600Mi"
+- description: Version of deployment
+  name: VERSION_NUMBER
+  required: true
+  value: "1.0"
+objects:
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      build: logging-load-pipeline
+    name: logging-load-pipeline
+  spec:
+    runPolicy: Serial
+    source: {}
+    strategy:
+      type: JenkinsPipeline
+      jenkinsPipelineStrategy:
+        jenkinsfile: |-
+          try {
+             timeout(time: 5, unit: 'MINUTES') {
+                def project = ""
+                node {
+                  project = "${env.PROJECT_NAME}"
+                  stage('Create LoggingLoadDriver back-end') {
+                    def gitURL = "${GIT_REPO_URL}"
+                    def gitBranch = "${GIT_REPO_BRANCH}"
+                    checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "/"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
+                    sh "oc new-app -f templates/build-template.json -p GIT_URI=${gitURL} -p GIT_REF=${gitBranch} -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
+                  }
+                }
+                stage('Build Back-ends') {
+                  parallel (
+                    "loggingloaddriver": {
+                      node {
+                        openshiftBuild buildConfig: "loggingloaddriver-pipeline", namespace: project
+                      }
+                    }
+                  )
+                }
+             }
+          } catch (err) {
+             echo "in catch block"
+             echo "Caught: ${err}"
+             currentBuild.result = 'FAILURE'
+             throw err
+          }
+    triggers:
+    - github:
+        secret: ${GITHUB_TRIGGER_SECRET}
+      type: GitHub
+    - generic:
+        secret: ${GENERIC_TRIGGER_SECRET}
+      type: Generic
