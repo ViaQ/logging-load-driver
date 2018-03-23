@@ -1,0 +1,155 @@
+{
+    "kind": "Template",
+    "apiVersion": "v1",
+    "metadata": {
+        "name": "logging-load-build",
+        "annotations": {
+            "description": "Template for building the Docker image logging-load-driver via Git and s2i strategy",
+            "iconClass": "icon-shadowman",
+            "tags": "logging-load-build-template,s2i"
+        }
+    },
+    "objects": [
+      {
+          "kind": "BuildConfig",
+          "apiVersion": "v1",
+          "metadata": {
+              "name": "logging-load-build",
+              "labels": {
+                "microservice": "${MICROSERVICE_NAME}",
+                "application": "${APPLICATION_NAME}",
+                "cmdb": "${APPLICATION_ID}",
+                "version": "${VERSION_NUMBER}",
+                "gitCommit": "${GIT_COMMIT}"
+              }
+          },
+          "spec": {
+            "triggers": [
+              {
+                "type": "GitHub",
+                "github": {
+                  "secret": "${GITHUB_SECRET}"
+                }
+              },
+              {
+                "type": "ImageChange",
+                "imageChange": {}
+              }
+            ],
+            "runPolicy": "Serial",
+            "source": {
+              "type": "Git",
+              "git": {
+                "uri": "${GIT_REPO_URL}",
+                "ref": "${GIT_REPO_BRANCH}"
+              },
+              "contextDir": "${GIT_CONTEXT_DIR}",
+              "sourceSecret": {
+                "name": "gitsecret"
+              }
+            },
+            "strategy": {
+              "type": "Docker",
+              "dockerStrategy": {
+                "from": {
+                  "kind": "ImageStreamTag",
+                  "namespace": "openshift",
+                  "name": "rhel7:latest"
+                },
+                "env": [
+                ]
+              }
+            },
+            "output": {
+                "to": {
+                    "kind": "ImageStreamTag",
+                    "name": "${MICROSERVICE_NAME}:latest"
+                }
+            },
+            "resources": {
+              "requests": {
+                "cpu" : "${BUILD_CPU_REQUEST}",
+                "memory": "${BUILD_MEM_REQUEST}"
+              },
+              "limits": {
+                "cpu" : "${BUILD_CPU_LIMIT}",
+                "memory": "${BUILD_MEM_LIMIT}"
+              }
+            }
+        }
+      }
+    ],
+    "parameters": [
+        {
+            "name": "MICROSERVICE_NAME",
+            "description": "The name for the application.",
+            "value": "my-microservice",
+            "required": true
+        },
+        {
+            "name": "APPLICATION_NAME",
+            "description": "Name of the application the microservice belongs to",
+            "value": "my-application",
+            "required": true
+        },
+        {
+            "name": "APPLICATION_ID",
+            "description": "ID of the application the microservice belongs to",
+            "value": "my-application-id",
+            "required": true
+        },
+        {
+            "name": "GIT_REPO_URL",
+            "description": "Git repository URL"
+        },
+        {
+            "name": "GIT_REPO_BRANCH",
+            "description": "Git repository branch",
+            "value": "dev"
+        },
+        {
+            "name": "GIT_CONTEXT_DIR",
+            "description": "Git context directory",
+            "value": "/"
+        },
+        {
+            "name": "BUILD_CPU_REQUEST",
+            "description": "The requested CPU for a build.",
+            "value": "100m",
+            "required": true
+        },
+        {
+            "name": "BUILD_MEM_REQUEST",
+            "description": "The requested memory for a build",
+            "value": "1600Mi",
+            "required": true
+        },
+        {
+            "name": "BUILD_CPU_LIMIT",
+            "description": "The limit of CPU to allow for a build",
+            "value":"1000m",
+            "required":true
+        },
+        {
+            "name": "BUILD_MEM_LIMIT",
+            "description": "The limit of memory to allow for a build",
+            "value": "1600Mi",
+            "required":true
+        },
+        {
+            "name": "VERSION_NUMBER",
+            "description": "Version of deployment.",
+            "value": "1.0",
+            "required":true
+        },
+        {
+            "name": "GIT_COMMIT",
+            "description": "Git commit of image.",
+            "value": "HEAD",
+            "required":true
+        }
+    ],
+    "labels": {
+        "template": "logging-load-build"
+    }
+}

@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: Template
+labels:
+  application: logging-load-driver-pipeline
+metadata:
+  name: logging-load-driver-pipeline
+parameters:
+- description: Logging Load Driver Application source URI
+  name: GIT_REPO_URL
+  required: true
+  value: https://github.com/ViaQ/logging-load-driver.git
+- description: Logging Load Driver Application source BRANCH
+  name: GIT_REPO_BRANCH
+  required: true
+  value: master
+- description: What commit to use from GIT
+  name: GIT_COMMIT
+  required: true
+  value: HEAD
+- description: Context directory which gives path from above repository down to its root
+  name: GIT_CONTEXT_DIR
+  required: false
+  value: ""
+- name: GITHUB_SECRET
+  description: A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
+  displayName: GitHub Webhook Secret
+  generate: expression
+  from: "[a-zA-Z0-9]{40}"
+- name: GENERIC_WEBHOOK_SECRET
+  displayName: Generic Webhook Secret,
+  description: A secret string used to configure the Generic webhook.
+  generate: expression
+  from: "[a-zA-Z0-9]{40}"
+- description: Name of the microservice
+  name: MICROSERVICE_NAME
+  required: true
+  value: logging-load-driver
+- description: Name of the application
+  name: APPLICATION_NAME
+  required: true
+  value: logging-load-driver
+- description: ID of the application
+  name: APPLICATION_ID
+  required: true
+  value: Log-Load
+- description: The requested CPU for a build or deployment
+  name: CPU_REQUEST
+  required: true
+  value: "200m"
+- description: The limit of CPU to allow for a build or deployment
+  name: CPU_LIMIT
+  required: true
+  value: "2000m"
+- description: The requested memory for a build or deployment
+  name: MEM_REQUEST
+  required: true
+  value: "1600Mi"
+- description: The limit of memory to allow for a build or deployment
+  name: MEM_LIMIT
+  required: true
+  value: "1600Mi"
+- description: Version of deployment
+  name: VERSION_NUMBER
+  required: true
+  value: "1.0"
+- description: Number of containers to scale to via deploymentconfig
+  name: NUM_REPLICAS
+  required: true
+  value: "1"
+objects:
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      build: logging-load-pipeline
+    name: logging-load-pipeline
+  spec:
+    runPolicy: Serial
+    source: {}
+    strategy:
+      type: JenkinsPipeline
+      jenkinsPipelineStrategy:
+        jenkinsfile: |-
+          try {
+             timeout(time: 15, unit: 'MINUTES') {
+                def project = ""
+                    def gitURL = "${GIT_REPO_URL}"
+                    def gitBranch = "${GIT_REPO_BRANCH}"
+                    def gitCommit = "${GIT_COMMIT}"
+                    def gitContext = "${GIT_CONTEXT_DIR}"
+                    def microName = "${MICROSERVICE_NAME}"
+                    def appName = "${APPLICATION_NAME}"
+                    def appID = "${APPLICATION_ID}"
+                    def cpuRequest = "${CPU_REQUEST}"
+                    def cpuLimit = "${CPU_LIMIT}"
+                    def memRequest = "${MEM_REQUEST}"
+                    def memLimit = "${MEM_LIMIT}"
+                    def replicas = "${NUM_REPLICAS}"
+                    def version = "${VERSION_NUMBER}"
+                node {
+                  project = "${env.PROJECT_NAME}"
+
+                  stage('Create BuildConfig logging-load-build') {
+             checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "${gitContext}"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
+               sh "oc new-app -f OpenShift/templates/build-template.json -p GIT_REPO_URL=${gitURL} -p GIT_REPO_BRANCH=${gitBranch} -p GIT_COMMIT=${gitCommit} -p GIT_CONTEXT_DIR=${gitContext} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p BUILD_CPU_REQUEST=${cpuRequest} -p BUILD_CPU_LIMIT=${cpuLimit} -p BUILD_MEM_REQUEST=${memRequest} -p BUILD_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
+                  }
+
+                  stage('Create DeploymentConfig logging-load-driver') {
+             checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "${gitContext}"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
+               sh "oc new-app -f OpenShift/templates/deploy-template.json -p GIT_COMMIT=${gitCommit} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p DEPLOY_CPU_REQUEST=${cpuRequest} -p DEPLOY_CPU_LIMIT=${cpuLimit} -p DEPLOY_MEM_REQUEST=${memRequest} -p DEPLOY_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -p NUM_REPLICAS=0 -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
+                  }
+                }
+
+                stage('Build Image') {
+                  parallel (
+                    "loggingloadbuild": {
+                      node {
+                        openshiftBuild buildConfig: "logging-load-build", namespace: project
+                      }
+                    }
+                  )
+                }
+                node {
+                  stage('Scale & Run Application') {
+                    sh "oc scale dc ${appName} -n ${project} --replicas=${replicas}"
+                  }
+               }
+             }
+          } catch (err) {
+             echo "in catch block"
+             echo "Caught: ${err}"
+             currentBuild.result = 'FAILURE'
+             throw err
+          }
+    triggers:
+    - github:
+        secret: ${GITHUB_TRIGGER_SECRET}
+      type: GitHub
+    - generic:
+        secret: ${GENERIC_TRIGGER_SECRET}
+      type: Generic

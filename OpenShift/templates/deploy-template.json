@@ -1,0 +1,223 @@
+{
+    "kind": "Template",
+    "apiVersion": "v1",
+    "metadata": {
+        "name": "logging-load-deploy",
+        "annotations": {
+            "description": "Template for deploying the logging-loader-driver application",
+            "iconClass": "icon-shadowman",
+            "tags": "logging-load-deployment-template"
+        }
+    },
+    "objects": [
+        {
+            "kind": "DeploymentConfig",
+            "apiVersion": "v1",
+            "metadata": {
+                "name": "${MICROSERVICE_NAME}",
+                "labels": {
+                  "microservice": "${MICROSERVICE_NAME}",
+                  "application": "${APPLICATION_NAME}",
+                  "cmdb": "${APPLICATION_ID}",
+                  "version": "${VERSION_NUMBER}",
+                  "gitCommit": "${GIT_COMMIT}"
+                }
+            },
+            "spec": {
+                "strategy": {
+                    "type": "Rolling",
+                    "rollingParams": {
+                        "updatePeriodSeconds": 1,
+                        "intervalSeconds": 1,
+                        "timeoutSeconds": 600,
+                        "maxUnavailable": "60%",
+                        "maxSurge": "60%"
+                    },
+                    "resources": {}
+                },
+                "triggers": [
+                    {
+                        "type": "ImageChange",
+                        "imageChangeParams": {
+                            "automatic": true,
+                            "containerNames": [
+                                "${MICROSERVICE_NAME}"
+                            ],
+                            "from": {
+                                "kind": "ImageStream",
+                                "name": "${MICROSERVICE_NAME}"
+                            }
+                        }
+                    }
+                ],
+                "replicas": "${NUM_REPLICAS}",
+                "selector": {
+                    "deploymentConfig": "${MICROSERVICE_NAME}"
+                },
+                "template": {
+                    "metadata": {
+                        "name": "${MICROSERVICE_NAME}",
+                        "labels": {
+                            "deploymentConfig": "${MICROSERVICE_NAME}",
+                            "microservice": "${MICROSERVICE_NAME}",
+                            "application": "${APPLICATION_NAME}",
+                            "cmdb": "${APPLICATION_ID}",
+                            "version": "${VERSION_NUMBER}",
+                            "gitCommit": "${GIT_COMMIT}"
+                        }
+                    },
+                    "spec": {
+                        "terminationGracePeriodSeconds": 30,
+                        "containers": [
+                            {
+                                "name": "${MICROSERVICE_NAME}",
+                                "image": "${MICROSERVICE_NAME}",
+                                "resources": {
+                                    "requests": {
+                                        "cpu" : "${DEPLOY_CPU_REQUEST}",
+                                        "memory": "${DEPLOY_MEM_REQUEST}"
+                                    },
+                                    "limits": {
+                                        "cpu" : "${DEPLOY_CPU_LIMIT}",
+                                        "memory": "${DEPLOY_MEM_LIMIT}"
+                                    }
+                                },
+                                "env": [
+                                    {
+                                        "name": "APP_POD_NAME",
+                                        "valueFrom": {
+                                            "fieldRef": {
+                                                "fieldPath": "metadata.name"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "APP_POD_NAMESPACE",
+                                        "valueFrom": {
+                                            "fieldRef": {
+                                                "fieldPath": "metadata.namespace"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "REPORT_INTERVAL",
+                                        "value": "10"
+                                    },
+                                    {
+                                        "name": "TOTAL_SIZE",
+                                        "value": "0"
+                                    },
+                                    {
+                                        "name": "PAYLOAD_GEN",
+                                        "value": "fixed"
+                                    },
+                                    {
+                                        "name": "DISTRIBUTION",
+                                        "value": "fixed"
+                                    },
+                                    {
+                                        "name": "STDDEV",
+                                        "value": "32"
+                                    },
+                                    {
+                                        "name": "OUTPUT",
+                                        "value": "stdout"
+                                    },
+                                    {
+                                        "name": "REPORT",
+                                        "value": "inline"
+                                    },
+                                    {
+                                        "name": "PAYLOAD_SIZE",
+                                        "value": "256"
+                                    },
+                                    {
+                                        "name": "SPRING_PROFILES_ACTIVE",
+                                        "value": "openshift"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ],
+    "parameters": [
+        {
+            "name": "MICROSERVICE_NAME",
+            "description": "Name of the microservice.",
+            "value": "my-microservice",
+            "required": true
+        },
+        {
+          "name": "APPLICATION_NAME",
+          "description": "Name of the application the microservice belongs to",
+          "value": "my-application",
+          "required": true
+        },
+        {
+          "name": "APPLICATION_ID",
+          "description": "ID of the application the microservice belongs to",
+          "value": "my-application-id",
+          "required": true
+        },
+        {
+          "name": "LIVENESS_DELAY",
+          "value": "480",
+          "description": "Intial mount of time in seconds to wait to perform a liveness check.",
+          "required": true
+        },
+        {
+          "name": "READINESS_DELAY",
+          "value": "60",
+          "description": "Intial mount of time in seconds to wait to perform a readiness check.",
+          "required": true
+        },
+        {
+          "name": "NUM_REPLICAS",
+          "value": "1",
+          "description": "Initial number of replicas to deploy",
+          "required": true
+        },
+        {
+            "name": "DEPLOY_CPU_REQUEST",
+            "description": "The requested CPU for a deploy.",
+            "value": "200m",
+            "required": true
+        },
+        {
+          "name": "DEPLOY_MEM_REQUEST",
+          "description": "The requested memory for a deploy",
+          "value": "1000Mi",
+          "required": true
+        },
+        {
+            "name": "DEPLOY_CPU_LIMIT",
+            "description": "The limit of CPU to allow for a deploy",
+            "value":"1000m",
+            "required":true
+        },
+        {
+            "name": "DEPLOY_MEM_LIMIT",
+            "description": "The limit of memory to allow for a deploy",
+            "value": "1000Mi",
+            "required":true
+        },
+        {
+            "name": "VERSION_NUMBER",
+            "description": "Version of deployment.",
+            "value": "1.0",
+            "required":true
+        },
+        {
+            "name": "GIT_COMMIT",
+            "description": "Git commit of image.",
+            "value": "HEAD",
+            "required":true
+        }
+    ],
+    "labels": {
+        "template": "logging-load-deploy"
+    }
+}
