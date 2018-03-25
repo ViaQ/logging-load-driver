@@ -14,7 +14,7 @@
           "kind": "BuildConfig",
           "apiVersion": "v1",
           "metadata": {
-              "name": "${MICROSERVICE_NAME}",
+              "name": "logging-load-build",
               "labels": {
                 "microservice": "${MICROSERVICE_NAME}",
                 "application": "${APPLICATION_NAME}",

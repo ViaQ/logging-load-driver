@@ -9,18 +9,18 @@ parameters:
   name: GIT_REPO_URL
   required: true
   value: https://github.com/Freddy-Montero/logging-load-driver.git
-- description: Logging Load Driver Application source reference
+- description: Logging Load Driver Application source BRANCH
   name: GIT_REPO_BRANCH
   required: true
   value: master
-- description: Git commit of image
+- description: What commit to use from GIT
   name: GIT_COMMIT
   required: true
   value: HEAD
-- description: Git context directory
+- description: Context directory which gives path from above repository down to its root
   name: GIT_CONTEXT_DIR
   required: true
-  value: "/"
+  value: "OpenShift"
 - name: GITHUB_SECRET
   description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
   displayName: GitHub Webhook Secret
@@ -31,7 +31,7 @@ parameters:
   description: A secret string used to configure the Generic webhook.
   generate: expression
   from: "[a-zA-Z0-9]{40}"
-- description: The name for the application
+- description: The name for the microservice (application)
   name: MICROSERVICE_NAME
   required: true
   value: logging-load-driver
@@ -78,22 +78,32 @@ objects:
       jenkinsPipelineStrategy:
         jenkinsfile: |-
           try {
-             timeout(time: 5, unit: 'MINUTES') {
+             timeout(time: 15, unit: 'MINUTES') {
                 def project = ""
                 node {
                   project = "${env.PROJECT_NAME}"
-                  stage('Create LoggingLoadDriver back-end') {
+                  stage('Build logging-load-driver Docker Image') {
                     def gitURL = "${GIT_REPO_URL}"
                     def gitBranch = "${GIT_REPO_BRANCH}"
-                    checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "/"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
-                    sh "oc new-app -f templates/build-template.json -p GIT_URI=${gitURL} -p GIT_REF=${gitBranch} -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
+                    def gitCommit = "${GIT_COMMIT}"
+                    def gitContext = "${GIT_CONTEXT_DIR}"
+                    def microName = "${MICROSERVICE_NAME}"
+                    def appName = "${APPLICATION_NAME}"
+                    def appID = "${APPLICATION_ID}"
+                    def cpuRequest = "${BUILD_CPU_REQUEST}"
+                    def cpuLimit = "${BUILD_CPU_LIMIT}"
+                    def memRequest = "${BUILD_MEM_REQUEST}"
+                    def memLimit = "${BUILD_MEM_LIMIT}"
+                    def version = "${VERSION_NUMBER}"
+             checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "logging-load-driver"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
+               sh "oc new-app -f OpenShift/templates/build-template.json -p GIT_REPO_URL=${gitURL} -p GIT_REPO_BRANCH=${gitBranch} -p GIT_COMMIT=${gitCommit} -p GIT_CONTEXT_DIR=${gitContext} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p BUILD_CPU_REQUEST=${cpuRequest} -p BUILD_CPU_LIMIT=${cpuLimit} -p BUILD_MEM_REQUEST=${memRequest} -p BUILD_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
                   }
                 }
-                stage('Build Back-ends') {
+                stage('Build') {
                   parallel (
-                    "loggingloaddriver": {
+                    "loggingloadbuild": {
                       node {
-                        openshiftBuild buildConfig: "loggingloaddriver-pipeline", namespace: project
+                        openshiftBuild buildConfig: "logging-load-build", namespace: project
                       }
                     }
                   )
