@@ -14,7 +14,7 @@
             "kind": "DeploymentConfig",
             "apiVersion": "v1",
             "metadata": {
-                "name": "${MICROSERVICE_NAME}",
+                "name": "${APPLICATION_NAME}",
                 "labels": {
                   "microservice": "${MICROSERVICE_NAME}",
                   "application": "${APPLICATION_NAME}",
@@ -56,9 +56,9 @@
                 },
                 "template": {
                     "metadata": {
-                        "name": "${MICROSERVICE_NAME}",
+                        "name": "logging-load-deploy",
                         "labels": {
-                            "deploymentConfig": "${MICROSERVICE_NAME}",
+                            "deploymentConfig": "logging-load-deploy",
                             "microservice": "${MICROSERVICE_NAME}",
                             "application": "${APPLICATION_NAME}",
                             "cmdb": "${APPLICATION_ID}",
@@ -72,13 +72,6 @@
                             {
                                 "name": "${MICROSERVICE_NAME}",
                                 "image": "${MICROSERVICE_NAME}",
-                                "ports": [
-                                    {
-                                        "name": "http",
-                                        "containerPort": 8080,
-                                        "protocol": "TCP"
-                                    }
-                                ],
                                 "resources": {
                                     "requests": {
                                         "cpu" : "${DEPLOY_CPU_REQUEST}",

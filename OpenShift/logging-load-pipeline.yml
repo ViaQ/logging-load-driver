@@ -19,10 +19,10 @@ parameters:
   value: HEAD
 - description: Context directory which gives path from above repository down to its root
   name: GIT_CONTEXT_DIR
-  required: true
+  required: false
   value: ""
 - name: GITHUB_SECRET
-  description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
+  description: A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
   displayName: GitHub Webhook Secret
   generate: expression
   from: "[a-zA-Z0-9]{40}"
@@ -31,32 +31,32 @@ parameters:
   description: A secret string used to configure the Generic webhook.
   generate: expression
   from: "[a-zA-Z0-9]{40}"
-- description: The name for the microservice (application)
+- description: Name of the microservice
   name: MICROSERVICE_NAME
   required: true
   value: logging-load-driver
-- description: Name of the application the microservice belongs to
+- description: Name of the application
   name: APPLICATION_NAME
   required: true
   value: logging-load-driver
-- description: ID of the application the microservice belongs to
+- description: ID of the application
   name: APPLICATION_ID
   required: true
-  value: LogSmasher
-- description: The requested CPU for a build
-  name: BUILD_CPU_REQUEST
+  value: Log-Load
+- description: The requested CPU for a build or deployment
+  name: CPU_REQUEST
   required: true
   value: "200m"
-- description: The limit of CPU to allow for a build
-  name: BUILD_CPU_LIMIT
+- description: The limit of CPU to allow for a build or deployment
+  name: CPU_LIMIT
   required: true
   value: "2000m"
-- description: The requested memory for a build
-  name: BUILD_MEM_REQUEST
+- description: The requested memory for a build or deployment
+  name: MEM_REQUEST
   required: true
   value: "1600Mi"
-- description: The limit of memory to allow for a build
-  name: BUILD_MEM_LIMIT
+- description: The limit of memory to allow for a build or deployment
+  name: MEM_LIMIT
   required: true
   value: "1600Mi"
 - description: Version of deployment
@@ -80,9 +80,6 @@ objects:
           try {
              timeout(time: 15, unit: 'MINUTES') {
                 def project = ""
-                node {
-                  project = "${env.PROJECT_NAME}"
-                  stage('Build logging-load-driver Docker Image') {
                     def gitURL = "${GIT_REPO_URL}"
                     def gitBranch = "${GIT_REPO_BRANCH}"
                     def gitCommit = "${GIT_COMMIT}"
@@ -90,16 +87,26 @@ objects:
                     def microName = "${MICROSERVICE_NAME}"
                     def appName = "${APPLICATION_NAME}"
                     def appID = "${APPLICATION_ID}"
-                    def cpuRequest = "${BUILD_CPU_REQUEST}"
-                    def cpuLimit = "${BUILD_CPU_LIMIT}"
-                    def memRequest = "${BUILD_MEM_REQUEST}"
-                    def memLimit = "${BUILD_MEM_LIMIT}"
+                    def cpuRequest = "${CPU_REQUEST}"
+                    def cpuLimit = "${CPU_LIMIT}"
+                    def memRequest = "${MEM_REQUEST}"
+                    def memLimit = "${MEM_LIMIT}"
                     def version = "${VERSION_NUMBER}"
-             checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: ""]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
+                node {
+                  project = "${env.PROJECT_NAME}"
+
+                  stage('Create BuildConfig logging-load-build') {
+             checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "${gitContext}"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
                sh "oc new-app -f OpenShift/templates/build-template.json -p GIT_REPO_URL=${gitURL} -p GIT_REPO_BRANCH=${gitBranch} -p GIT_COMMIT=${gitCommit} -p GIT_CONTEXT_DIR=${gitContext} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p BUILD_CPU_REQUEST=${cpuRequest} -p BUILD_CPU_LIMIT=${cpuLimit} -p BUILD_MEM_REQUEST=${memRequest} -p BUILD_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
                   }
+
+                  stage('Create DeploymentConfig logging-load-driver') {
+             checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "${gitContext}"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
+               sh "oc new-app -f OpenShift/templates/deploy-template.json -p GIT_COMMIT=${gitCommit} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p DEPLOY_CPU_REQUEST=${cpuRequest} -p DEPLOY_CPU_LIMIT=${cpuLimit} -p DEPLOY_MEM_REQUEST=${memRequest} -p DEPLOY_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -p NUM_REPLICAS=1 -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
+                  }
                 }
-                stage('Build') {
+
+                stage('Build Image') {
                   parallel (
                     "loggingloadbuild": {
                       node {
@@ -108,6 +115,11 @@ objects:
                     }
                   )
                 }
+                node {
+                  stage('Run Application') {
+                    sh "oc scale dc logging-load-driver -n ${project} --replicas=1"
+                  }
+               }
              }
           } catch (err) {
              echo "in catch block"
