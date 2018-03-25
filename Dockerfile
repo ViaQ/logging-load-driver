@@ -1,7 +1,7 @@
 FROM openshift/rhel7
 
 COPY ./loader /
-COPY ./loader.sh /
+COPY OpenShift/loader.sh /
 RUN chmod +x /loader.sh /loader
 
 CMD ["/loader.sh"]
