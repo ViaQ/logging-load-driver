@@ -63,6 +63,10 @@ parameters:
   name: VERSION_NUMBER
   required: true
   value: "1.0"
+- description: Number of containers to scale to via deploymentconfig
+  name: NUM_REPLICAS
+  required: true
+  value: "1"
 objects:
 - apiVersion: v1
   kind: BuildConfig
@@ -91,6 +95,7 @@ objects:
                     def cpuLimit = "${CPU_LIMIT}"
                     def memRequest = "${MEM_REQUEST}"
                     def memLimit = "${MEM_LIMIT}"
+                    def replicas = "${NUM_REPLICAS}"
                     def version = "${VERSION_NUMBER}"
                 node {
                   project = "${env.PROJECT_NAME}"
@@ -102,7 +107,7 @@ objects:
 
                   stage('Create DeploymentConfig logging-load-driver') {
              checkout([$class: "GitSCM", branches: [[name: "*/${gitBranch}"]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: "RelativeTargetDirectory", relativeTargetDir: "${gitContext}"]], submoduleCfg: [], userRemoteConfigs: [[url: "${gitURL}"]]])
-               sh "oc new-app -f OpenShift/templates/deploy-template.json -p GIT_COMMIT=${gitCommit} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p DEPLOY_CPU_REQUEST=${cpuRequest} -p DEPLOY_CPU_LIMIT=${cpuLimit} -p DEPLOY_MEM_REQUEST=${memRequest} -p DEPLOY_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -p NUM_REPLICAS=1 -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
+               sh "oc new-app -f OpenShift/templates/deploy-template.json -p GIT_COMMIT=${gitCommit} -p MICROSERVICE_NAME=${microName} -p APPLICATION_NAME=${appName} -p APPLICATION_ID=${appID} -p DEPLOY_CPU_REQUEST=${cpuRequest} -p DEPLOY_CPU_LIMIT=${cpuLimit} -p DEPLOY_MEM_REQUEST=${memRequest} -p DEPLOY_MEM_LIMIT=${memLimit} -p VERSION_NUMBER=${version} -p NUM_REPLICAS=0 -n ${project} --dry-run -o yaml | oc apply -f - -n ${project}"
                   }
                 }
 
@@ -116,8 +121,8 @@ objects:
                   )
                 }
                 node {
-                  stage('Run Application') {
-                    sh "oc scale dc logging-load-driver -n ${project} --replicas=1"
+                  stage('Scale & Run Application') {
+                    sh "oc scale dc ${appName} -n ${project} --replicas=${replicas}"
                   }
                }
              }
