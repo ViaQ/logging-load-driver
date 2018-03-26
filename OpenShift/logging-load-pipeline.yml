@@ -8,7 +8,7 @@ parameters:
 - description: Logging Load Driver Application source URI
   name: GIT_REPO_URL
   required: true
-  value: https://github.com/Freddy-Montero/logging-load-driver.git
+  value: https://github.com/ViaQ/logging-load-driver.git
 - description: Logging Load Driver Application source BRANCH
   name: GIT_REPO_BRANCH
   required: true
