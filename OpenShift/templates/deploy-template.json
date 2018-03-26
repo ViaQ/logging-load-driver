@@ -14,7 +14,7 @@
             "kind": "DeploymentConfig",
             "apiVersion": "v1",
             "metadata": {
-                "name": "${APPLICATION_NAME}",
+                "name": "${MICROSERVICE_NAME}",
                 "labels": {
                   "microservice": "${MICROSERVICE_NAME}",
                   "application": "${APPLICATION_NAME}",
