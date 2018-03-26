@@ -56,9 +56,9 @@
                 },
                 "template": {
                     "metadata": {
-                        "name": "logging-load-deploy",
+                        "name": "${MICROSERVICE_NAME}",
                         "labels": {
-                            "deploymentConfig": "logging-load-deploy",
+                            "deploymentConfig": "${MICROSERVICE_NAME}",
                             "microservice": "${MICROSERVICE_NAME}",
                             "application": "${APPLICATION_NAME}",
                             "cmdb": "${APPLICATION_ID}",
