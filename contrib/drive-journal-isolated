@@ -1,0 +1,11 @@
+#!/bin/bash
+
+for size in 64 128 256 512 1024 ; do
+    # Drive an initial data set to clear out journal logs, but just enough to fill at least one
+    ../loader --output=syslog --total-size=110 --payload-gen=fixed --distribution=fixed --report=stdout --report-interval=200 2048
+    # Vacuum out all the journal files so we only have our initial data above
+    # FIXME - not very accurate for the same start state
+    journalctl --vacuum-size=100K
+    # run it
+    pbench-user-benchmark --config="lld-001-journal-isolated-msg-$size" -- ./journal-isolated $size
+done
