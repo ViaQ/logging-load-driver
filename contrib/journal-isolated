@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Chosen to be a bit bigger than journald's configured SystemMaxSize, 1.1 GBs
+# or 1,100 MBs.
+TOTAL_SIZE=1100
+# Should give us 110 data points during the run no matter what the message size
+# is used below, 10 MBs.
+REPORT_SIZE=10
+
+function get_invocid {
+    echo "size_${1}"
+}
+
+function run_loader_journal_via_syslog_w_verify() {
+    echo    loader --invocid="$(get_invocid $1)" --stddev=1 --distribution=normal --payload-gen=random --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
+    ../verify-loader --report-interval=$REPORT_SIZE --emit-loader-stats --read-journal &
+    verpid=$!
+    trap "kill -TERM $verpid 2>/dev/null" INT
+         ../loader --invocid="$(get_invocid $1)" --stddev=1 --distribution=normal --payload-gen=random --total-size=$TOTAL_SIZE --report-interval=$REPORT_SIZE --output=syslog $1
+    sleep 1
+    kill -TERM $verpid 2>/dev/null
+    wait $verpid 2>/dev/null
+    trap - INT
+}
+
+run_loader_journal_via_syslog_w_verify ${1}
