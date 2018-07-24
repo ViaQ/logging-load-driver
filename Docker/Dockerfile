@@ -15,4 +15,4 @@ RUN chmod +x /loader
 # docker logs $contid
 # docker stop $contid
 # docker rm $contid
-CMD /loader --msgpersec=${MSGPERSEC} --report-interval=${REPORT_INTERVAL} --total-size=${TOTAL_SIZE} --distribution=${DISTRIBUTION} --payload-gen=${PAYLOAD_GEN} --stddev=${STDDEV} --output=${OUTPUT} --report=${REPORT} ${PAYLOAD_SIZE}
+CMD /loader --msgpersec=${MSGPERSEC} --report-interval=${REPORT_INTERVAL} --total-size=${TOTAL_SIZE} --distribution=${DISTRIBUTION} --payload-gen=${PAYLOAD_GEN} --stddev=${STDDEV} --output=${OUTPUT} --report=${REPORT} --log-format=${LOGFORMAT} ${PAYLOAD_SIZE} 
