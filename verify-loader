@@ -93,10 +93,10 @@ def print_stats(invocid, ctx, payload):
         elif len(vals) == 8:
             timestamp, statseq, lclrate, gblrate = vals[1], vals[2], vals[3], vals[7]
         else:
-            print "Logic bomb!"
+            print("Logic bomb!")
             sys.exit(1)
     except Exception:
-        print "Error: ", payload
+        print("Error: ", payload)
         sys.stdout.flush()
     else:
         try:
@@ -105,15 +105,15 @@ def print_stats(invocid, ctx, payload):
             lclrate = float(lclrate)
             gblrate = float(gblrate)
         except Exception:
-            print "Error: ", payload
+            print("Error: ", payload)
             sys.stdout.flush()
         else:
             assert ctx.prev == statseq
             assert timestamp[-1] == 's'
             now = time.time()
-            print "%s: %.2fs (%5.2fs) %12.3f %12.3f %d %d %d %d" % (
+            print("%s: %.2fs (%5.2fs) %12.3f %12.3f %d %d %d %d" % (
                     invocid, ts, now - ts, lclrate, gblrate, statseq,
-                    ctx.count, ctx.skips, ctx.duplicates)
+                    ctx.count, ctx.skips, ctx.duplicates))
             sys.stdout.flush()
 
 
@@ -157,7 +157,7 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         prev = ctx.msg(seq, line_len)
                         if prev is not None:
                             # Bad record encountered, flag it
-                            print "%s: %d %d  <-" % (invocid, seq, prev)
+                            print("%s: %d %d  <-" % (invocid, seq, prev))
                             sys.stdout.flush()
                         if payload.startswith(" (stats:"):
                             print_stats(invocid, ctx, payload)
@@ -171,16 +171,16 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                 total_count = 0
                 report_count = 0
 
-                print "\n+++ verify-loader"
+                print("\n+++ verify-loader")
 
                 for invocid, ctx in contexts.items():
                     report_count += ctx.report_count
                     if ctx.report():
-                        print "%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates)
+                        print("%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates))
                     total_bytes += ctx.bytes
                     total_count += ctx.count
 
-                print "interval read rate: %.3f MB/sec, %.3f/sec " \
+                print("interval read rate: %.3f MB/sec, %.3f/sec " \
                       "(ignored %.3f MB/sec, %.3f/sec); " \
                       "overall read rate: %.3f MB/sec %.3f/sec " \
                       "(ignored %.3f MB/sec, %.3f/sec)" % (
@@ -191,8 +191,8 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         (total_bytes / MB) / (now - start),
                         (total_count / (now - start)),
                         (ignored_bytes / MB) / (now - start),
-                        (ignored_count / (now - start)))
-                print "--- verify-loader\n"
+                        (ignored_count / (now - start))))
+                print("--- verify-loader\n")
                 sys.stdout.flush()
 
                 report_bytes = 0
@@ -217,16 +217,16 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
             tot_skips += ctx.skips
             tot_dupes += ctx.duplicates
         if ignored_count + total_count > 0:
-            print "\n+++ verify-loader"
+            print("\n+++ verify-loader")
             for invocid, ctx in contexts.items():
-                print "%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates)
-            print "overall read rate: %.3f MB/sec %.3f/sec " \
+                print("%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates))
+            print("overall read rate: %.3f MB/sec %.3f/sec " \
                   "(ignored %.3f MB/sec, %.3f/sec)" % (
                     (total_bytes / MB) / (now - start),
                     (total_count / (now - start)),
                     (ignored_bytes / MB) / (now - start),
-                    (ignored_count / (now - start)))
-            print "--- verify-loader\n"
+                    (ignored_count / (now - start))))
+            print("--- verify-loader\n")
         if tot_skips + tot_dupes > 0:
             ret_val = 1
     return ret_val
@@ -261,11 +261,11 @@ if __name__ == '__main__':
                     j.wait()
             input_gen = jreader()
         else:
-            input_gen = os.fdopen(sys.stdin.fileno(), 'r', 0)
+            input_gen = os.fdopen(sys.stdin.fileno(), 'r', 1)
     else:
         if args.readjournal:
-            print "*** Warning *** ignoring request to read from the systemd" \
+            print("*** Warning *** ignoring request to read from the systemd" \
                   " journal (--read-journal) since we have an actual file" \
-                  " argument provided (%s) ..." % args.file
-        input_gen = open(args.file, 'r', 0)
+                  " argument provided (%s) ..." % args.file)
+        input_gen = open(args.file, 'r', 1)
     sys.exit(verify(input_gen, args.reportint))
