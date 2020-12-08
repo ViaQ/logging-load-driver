@@ -135,16 +135,21 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
     try:
         for line in input_gen:
             line_len = len(line)
-            if not line.startswith("loader seq - "):
+            #find the log header: loader seq -
+            #for container logs the line will not start with header - instead there's a timestamp; if header not present ignore this line 
+            if "loader seq - " not in line:
                 report_ignored_bytes += line_len
                 report_ignored_count += 1
             else:
+                #check that line read has constituent parts after header (<header> - <uuid> - <seq_num> - <payload>)
                 try:
-                    _, invocid, seqval, payload = line.split('-', 4)
+                    indx = line.find('loader seq -') 
+                    _, invocid, seqval, payload = line[indx:].split('-', 4)
                 except Exception:
                     report_ignored_bytes += line_len
                     report_ignored_count += 1
                 else:
+                    #check if seq_num is valid
                     try:
                         seq = int(seqval)
                     except Exception:
@@ -192,6 +197,7 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         (total_count / (now - start)),
                         (ignored_bytes / MB) / (now - start),
                         (ignored_count / (now - start))))
+                print("interval stats:: total bytes: %d, total lines: %d, ignored: %d" % (report_bytes, report_count, report_ignored_count))
                 print("--- verify-loader\n")
                 sys.stdout.flush()
 
@@ -226,6 +232,8 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                     (total_count / (now - start)),
                     (ignored_bytes / MB) / (now - start),
                     (ignored_count / (now - start))))
+            print("total bytes: %d, total lines: %d, ignored lines: %d" % (total_bytes, total_count, ignored_count))
+            print("overall ignored percentage = %.3f" %(ignored_count*100.0/total_count))
             print("--- verify-loader\n")
         if tot_skips + tot_dupes > 0:
             ret_val = 1
