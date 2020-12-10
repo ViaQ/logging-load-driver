@@ -122,8 +122,10 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
 
     ignored_bytes = 0
     ignored_count = 0
+    loss_count = 0
 
     report_bytes = 0
+    # report stats after every <report_interval> MB
     report_bytes_target = report_interval * MB
     report_ignored_bytes = 0
     report_ignored_count = 0
@@ -160,9 +162,11 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         invocid = invocid.strip()
                         ctx = contexts[invocid]
                         prev = ctx.msg(seq, line_len)
+                        # check for out of order lines - this implies LOG LOSS
                         if prev is not None:
                             # Bad record encountered, flag it
                             print("%s: %d %d  <-" % (invocid, seq, prev))
+                            loss_count += (seq-prev)
                             sys.stdout.flush()
                         if payload.startswith(" (stats:"):
                             print_stats(invocid, ctx, payload)
@@ -232,8 +236,8 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                     (total_count / (now - start)),
                     (ignored_bytes / MB) / (now - start),
                     (ignored_count / (now - start))))
-            print("total bytes: %d, total lines: %d, ignored lines: %d" % (total_bytes, total_count, ignored_count))
-            print("overall ignored percentage = %.3f" %(ignored_count*100.0/total_count))
+            print("total bytes: %d, total lines: %d, ignored lines: %d, lost(out-ofseq) lines: %d" % (total_bytes, total_count, ignored_count, loss_count))
+            print("overall loss percentage = %.3f" %(loss_count*100.0/total_count))
             print("--- verify-loader\n")
         if tot_skips + tot_dupes > 0:
             ret_val = 1
