@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # ViaQ logging load generator
 #
@@ -111,7 +111,10 @@ def print_stats(invocid, ctx, payload):
             assert ctx.prev == statseq
             assert timestamp[-1] == 's'
             now = time.time()
-            print("%s: %.2fs (%5.2fs) %12.3f %12.3f %d %d %d %d" % (
+            #print("%s: %.2fs (%5.2fs) %12.3f %12.3f %d %d %d %d" % (
+            #        invocid, ts, now - ts, lclrate, gblrate, statseq,
+            #        ctx.count, ctx.skips, ctx.duplicates))
+            print("{}: {:.2f}s ({:5.2f}s) {:12.3f} {:12.3f} {} {} {} {}" % (
                     invocid, ts, now - ts, lclrate, gblrate, statseq,
                     ctx.count, ctx.skips, ctx.duplicates))
             sys.stdout.flush()
@@ -122,6 +125,7 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
 
     ignored_bytes = 0
     ignored_count = 0
+    out_of_seq = 0
     loss_count = 0
 
     report_bytes = 0
@@ -138,15 +142,13 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
         for line in input_gen:
             line_len = len(line)
             #find the log header: loader seq -
-            #for container logs the line will not start with header - instead there's a timestamp; if header not present ignore this line 
-            if "loader seq - " not in line:
+            if not line.startswith("loader seq - "):
                 report_ignored_bytes += line_len
                 report_ignored_count += 1
             else:
-                #check that line read has constituent parts after header (<header> - <uuid> - <seq_num> - <payload>)
+                #check that the line has all the constituent parts (<header> - <uuid> - <seq_num> - <payload>)
                 try:
-                    indx = line.find('loader seq -') 
-                    _, invocid, seqval, payload = line[indx:].split('-', 4)
+                    _, invocid, seqval, payload = line.split('-', 4)
                 except Exception:
                     report_ignored_bytes += line_len
                     report_ignored_count += 1
@@ -165,8 +167,9 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         # check for out of order lines - this implies LOG LOSS
                         if prev is not None:
                             # Bad record encountered, flag it
-                            print("%s: %d %d  <-" % (invocid, seq, prev))
-                            loss_count += (seq-prev)
+                            print("{}: {} {}  <-".format(invocid, seq, prev))
+                            out_of_seq += 1
+                            #loss_count += (seq-prev)
                             sys.stdout.flush()
                         if payload.startswith(" (stats:"):
                             print_stats(invocid, ctx, payload)
@@ -185,14 +188,16 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                 for invocid, ctx in contexts.items():
                     report_count += ctx.report_count
                     if ctx.report():
-                        print("%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates))
+                        print("{}: {} {} {}".format(invocid, ctx.count, ctx.skips, ctx.duplicates))
                     total_bytes += ctx.bytes
                     total_count += ctx.count
 
-                print("interval read rate: %.3f MB/sec, %.3f/sec " \
-                      "(ignored %.3f MB/sec, %.3f/sec); " \
-                      "overall read rate: %.3f MB/sec %.3f/sec " \
-                      "(ignored %.3f MB/sec, %.3f/sec)" % (
+                print("interval read rate: {%.3f} MB/sec, {%.3f}/sec " \
+                      "(ignored {%.3f} MB/sec, {%.3f}/sec); " \
+                      "overall read rate: {%.3f} MB/sec {%.3f}/sec " \
+                      "(ignored {%.3f} MB/sec, {%.3f}/sec)" \
+                      "(total lines {})" \
+                      "(ignored lines {})".format(
                         (report_bytes / MB) / (now - report_start),
                         (report_count / (now - report_start)),
                         (report_ignored_bytes / MB) / (now - report_start),
@@ -200,8 +205,8 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         (total_bytes / MB) / (now - start),
                         (total_count / (now - start)),
                         (ignored_bytes / MB) / (now - start),
-                        (ignored_count / (now - start))))
-                print("interval stats:: total bytes: %d, total lines: %d, ignored: %d" % (report_bytes, report_count, report_ignored_count))
+                        (ignored_count / (now - start)),
+                        (report_count, report_ignored_count)))
                 print("--- verify-loader\n")
                 sys.stdout.flush()
 
@@ -229,15 +234,16 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
         if ignored_count + total_count > 0:
             print("\n+++ verify-loader")
             for invocid, ctx in contexts.items():
-                print("%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates))
-            print("overall read rate: %.3f MB/sec %.3f/sec " \
-                  "(ignored %.3f MB/sec, %.3f/sec)" % (
+                print("{}: {} {} {}".format(invocid, ctx.count, ctx.skips, ctx.duplicates))
+            
+            print("overall read rate: {:.3f} MB/sec {:.3f}/sec " \
+                  "(ignored {:.3f} MB/sec, {:.3f}/sec)" \
+                  "(total bytes {}, total lines {}, ignored lines {}, bad sequence {}({:.3f}%))".format(
                     (total_bytes / MB) / (now - start),
                     (total_count / (now - start)),
                     (ignored_bytes / MB) / (now - start),
-                    (ignored_count / (now - start))))
-            print("total bytes: %d, total lines: %d, ignored lines: %d, lost(out-ofseq) lines: %d" % (total_bytes, total_count, ignored_count, loss_count))
-            print("overall loss percentage = %.3f" %(loss_count*100.0/total_count))
+                    (ignored_count / (now - start)),
+                    total_bytes, total_count, ignored_count, out_of_seq, (out_of_seq*100.0)/total_count))
             print("--- verify-loader\n")
         if tot_skips + tot_dupes > 0:
             ret_val = 1
