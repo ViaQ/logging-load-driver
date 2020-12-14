@@ -111,10 +111,7 @@ def print_stats(invocid, ctx, payload):
             assert ctx.prev == statseq
             assert timestamp[-1] == 's'
             now = time.time()
-            #print("%s: %.2fs (%5.2fs) %12.3f %12.3f %d %d %d %d" % (
-            #        invocid, ts, now - ts, lclrate, gblrate, statseq,
-            #        ctx.count, ctx.skips, ctx.duplicates))
-            print("{}: {:.2f}s ({:5.2f}s) {:12.3f} {:12.3f} {} {} {} {}" % (
+            print("{}: {:.2f}s ({:5.2f}s) {:12.3f} {:12.3f} {} {} {} {}".format(
                     invocid, ts, now - ts, lclrate, gblrate, statseq,
                     ctx.count, ctx.skips, ctx.duplicates))
             sys.stdout.flush()
