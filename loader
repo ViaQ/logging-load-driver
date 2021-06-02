@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env pypy3
 #
 # ViaQ logging load generator
 #
-# Copyright 2018 Red Hat, Inc.
+# Copyright 2021 Red Hat, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,8 @@
 # limitations under the License.
 #
 
-from __future__ import print_function
-
 import sys
+import os
 import time
 import uuid
 import random
@@ -32,7 +31,7 @@ import argparse
 DEFAULT_STDDEV = 32
 
 
-def msgsizgen_fixed(stats, mean, stddev = None):
+def msgsizgen_fixed(stats, mean, stddev=None):
     '''Generate a series of "fixed" sizes, always yielding the given
        "mean" as the value.
 
@@ -42,7 +41,7 @@ def msgsizgen_fixed(stats, mean, stddev = None):
         yield stats.nextseq(mean)
 
 
-def msgsizgen_gaussian(stats, mean, stddev = DEFAULT_STDDEV):
+def msgsizgen_gaussian(stats, mean, stddev=DEFAULT_STDDEV):
     '''Generate a series of random numbers with a Guassian distribution,
        where the mean and standard deviation are given arguments.
 
@@ -56,7 +55,11 @@ def msgsizgen_gaussian(stats, mean, stddev = DEFAULT_STDDEV):
         yield stats.nextseq(int(round(randomizer.gauss(mean, stddev))))
 
 
-dist_methods = { 'fixed': msgsizgen_fixed, 'gaussian': msgsizgen_gaussian, 'normal': msgsizgen_gaussian }
+dist_methods = {
+    'fixed': msgsizgen_fixed,
+    'gaussian': msgsizgen_gaussian,
+    'normal': msgsizgen_gaussian
+}
 
 
 class StatsCtx(object):
@@ -87,7 +90,9 @@ class StatsCtx(object):
                 now = time.time()
             # We have exited our rate-limit window, calculate next
             # window and continue
-            self.msgperiod = (self.msgperiod[0], self.msgperiod[1] + self.msgperiod[0])
+            self.msgperiod = (
+                self.msgperiod[0], self.msgperiod[1] + self.msgperiod[0]
+            )
         if self.report_size > self.rptint:
             report = True
             self.report_size = 0
@@ -110,10 +115,14 @@ class StatsCtx(object):
             notice = ""
         self.past = now
         self.msgs = 0
-        return "%.3fs %0*d %10.3f%s %10.3f" % (now, seq_width, self.seq, msg_rate, notice, total_msg_rate)
+        return "%.3fs %0*d %10.3f%s %10.3f" % (
+            now, seq_width, self.seq, msg_rate, notice, total_msg_rate
+        )
 
 
 chars = string.ascii_lowercase + string.digits
+
+
 def payload_random(size):
     return ''.join(random.choice(chars) for x in range(size))
 
@@ -122,10 +131,14 @@ def payload_fixed(size):
     return 'x' * size
 
 
-gen_methods = { 'fixed': payload_fixed, 'random': payload_random }
+gen_methods = {'fixed': payload_fixed, 'random': payload_random}
 
 
-def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DEFAULT_STDDEV, report_interval=10, seq_width=10, msgpersec=0, total_size=0, payload_gen='random'):
+def load(
+    invocid, size, output_method, report_method, dist='gaussian',
+    stddev=DEFAULT_STDDEV, report_interval=10, seq_width=10, msgpersec=0,
+    total_size=0, payload_gen='random'
+):
     '''Emit a formatted payload of random bytes, using a Gaussian
        distribution using a given size as the mean.  The payload
        is emitted using the output_method function, while statistics
@@ -151,7 +164,15 @@ def load(invocid, size, output_method, report_method, dist='gaussian', stddev=DE
     stats = StatsCtx(msgpersec, report_interval)
     for asize, seq, report in msgsizgen(stats, size, stddev):
         asize -= sub_len
-        if report_method is None and (report or (total_size > 0 and stats.total_size > total_size * (1024 * 1024))):
+        if (
+            report_method is None and (
+                report or (
+                    total_size > 0 and (
+                        stats.total_size > total_size * (1024 * 1024)
+                    )
+                )
+            )
+        ):
             # Reporting is done inline as part of a sequence message payload.
             stats_msg = "(stats: %s) " % stats.statstr(seq_width)
             stats_msg_len = len(stats_msg)
@@ -178,10 +199,14 @@ if __name__ == '__main__':
     log.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(module)s.%(funcName)s: %(message)s')
     try:
-        handler = logging.handlers.SysLogHandler(address = '/dev/log')
+        handler = logging.handlers.SysLogHandler(address='/dev/log')
         handler.setFormatter(formatter)
     except Exception as e:
-        print("*** Warning *** - could not open /dev/log, falling back to console handler for logger ... (exception: %s)" % e, file=sys.stderr)
+        print(
+            "*** Warning *** - could not open /dev/log, falling back to"
+            f" console handler for logger ... (exception: {e})",
+            file=sys.stderr
+        )
         consoleHandler = logging.StreamHandler()
         consoleHandler.setFormatter(formatter)
         log.addHandler(consoleHandler)
@@ -189,36 +214,85 @@ if __name__ == '__main__':
         log.addHandler(handler)
 
     parser = argparse.ArgumentParser(description='Message payload generator.')
-    parser.add_argument('payload_size', metavar='SIZE', type=int, nargs='?',
-            default=1024,
-			help='an integer specifying the mean size of the payload using a Gaussian distribution')
-    parser.add_argument('--distribution', metavar='DIST', dest='payload_dist', action='store',
-            default='gaussian', choices=dist_methods,
-            help='the size distribution to use, e.g. "gaussian" (default), "normal" (alias for gaussian), or "fixed"')
-    parser.add_argument('--payload-gen', metavar='GEN', dest='payload_gen', action='store',
-            default='random', choices=gen_methods,
-            help='the payload generator to use, e.g. "random" (default), or "fixed"')
-    parser.add_argument('--invocid', metavar='INVOCID', dest='invocid', action='store',
-            default=uuid.uuid4().hex,
-			help='the unique invocation ID string to use (defaults to 32 char generated one)')
-    parser.add_argument('--stddev', metavar='STDDEV', dest='stddev', type=float,
-            default=DEFAULT_STDDEV,
-            help='the standard deviation to use with a random distribution (defaults to 32)')
-    parser.add_argument('--output', metavar='METHOD', dest='output', action='store',
-            default='stdout',
-            help='where to emit the output, one of: "stdout", "stderr", "syslog", "<file name>" (defaults to "stdout")')
-    parser.add_argument('--report', metavar='METHOD', dest='report', action='store',
-            default='inline',
-            help='where to emit the report output, one of: "inline", "stdout", "stderr", "syslog", "<file name>" (defaults to "inline")')
-    parser.add_argument('--msgpersec', metavar='MSGPERSEC', dest='msgpersec', type=float,
-            default=0,
-            help='the # of logs per second (floating point) to emit (defaults to 0, unlimited)')
-    parser.add_argument('--report-interval', metavar='INTERVAL', dest='reportint', type=int,
-            default=10,
-            help='the # of megabytes of message data between reports (defaults to 10 MB)')
-    parser.add_argument('--total-size', metavar='TOTSIZE', dest='totalsize', type=int,
-            default=0,
-            help='the total # of megabytes to generate before ending (defaults to 0, unlimited)')
+    parser.add_argument(
+        'payload_size', metavar='SIZE', type=int, nargs='?',
+        default=1024,
+        help=(
+            'an integer specifying the mean size of the payload using a'
+            ' Gaussian distribution'
+        )
+    )
+    parser.add_argument(
+        '--distribution', metavar='DIST', dest='payload_dist', action='store',
+        default='gaussian', choices=dist_methods,
+        help=(
+            'the size distribution to use, e.g. "gaussian" (default),'
+            ' "normal" (alias for gaussian), or "fixed"'
+            )
+        )
+    parser.add_argument(
+        '--payload-gen', metavar='GEN', dest='payload_gen', action='store',
+        default='random', choices=gen_methods,
+        help=(
+            'the payload generator to use, e.g. "random" (default), or "fixed"'
+        )
+    )
+    parser.add_argument(
+        '--invocid', metavar='INVOCID', dest='invocid', action='store',
+        default=uuid.uuid4().hex,
+        help=(
+            'the unique invocation ID string to use (defaults to 32 char'
+            ' generated one)'
+        )
+    )
+    parser.add_argument(
+        '--stddev', metavar='STDDEV', dest='stddev', type=float,
+        default=DEFAULT_STDDEV,
+        help=(
+            'the standard deviation to use with a random distribution'
+            ' (defaults to 32)'
+        )
+    )
+    parser.add_argument(
+        '--output', metavar='METHOD', dest='output', action='store',
+        default='stdout',
+        help=(
+            'where to emit the output, one of: "stdout", "stderr", "syslog",'
+            ' "<file name>" (defaults to "stdout")'
+        )
+    )
+    parser.add_argument(
+        '--report', metavar='METHOD', dest='report', action='store',
+        default='inline',
+        help=(
+            'where to emit the report output, one of: "inline", "stdout",'
+            ' "stderr", "syslog", "<file name>" (defaults to "inline")'
+        )
+    )
+    parser.add_argument(
+        '--msgpersec', metavar='MSGPERSEC', dest='msgpersec', type=float,
+        default=0,
+        help=(
+            'the # of logs per second (floating point) to emit (defaults to'
+            ' 0, unlimited)'
+        )
+    )
+    parser.add_argument(
+        '--report-interval', metavar='INTERVAL', dest='reportint', type=int,
+        default=10,
+        help=(
+            'the # of megabytes of message data between reports'
+            ' (defaults to 10 MB)'
+        )
+    )
+    parser.add_argument(
+        '--total-size', metavar='TOTSIZE', dest='totalsize', type=int,
+        default=0,
+        help=(
+            'the total # of megabytes to generate before ending'
+            ' (defaults to 0, unlimited)'
+        )
+    )
     args = parser.parse_args()
 
     # Determine the output method to emit logs
@@ -228,11 +302,14 @@ if __name__ == '__main__':
     else:
         if args.output in ('stderr', 'stdout'):
             ofp = getattr(sys, args.output)
+            ofp = os.fdopen(ofp.fileno(), mode="w", buffering=65536)
         else:
             # Assume the parameter is a file name
-            ofp = open(args.output, "w")
+            ofp = open(args.output, "w", buffering=65536)
+
         def output_closure(payload):
             ofp.write(payload + '\n')
+
         output_method = output_closure
 
     # Determine the report method to use
@@ -248,16 +325,20 @@ if __name__ == '__main__':
         else:
             # Assume the parameter is a file name
             rfp = open(args.report, "w")
+
         def report_closure(payload):
             rfp.write(payload + '\n')
+
             rfp.flush()
         report_method = report_closure
 
     try:
-        load(args.invocid, args.payload_size, output_method, report_method,
-                dist=args.payload_dist, stddev=args.stddev, msgpersec=args.msgpersec,
-                report_interval=args.reportint, total_size=args.totalsize,
-                payload_gen=args.payload_gen)
+        load(
+            args.invocid, args.payload_size, output_method, report_method,
+            dist=args.payload_dist, stddev=args.stddev,
+            msgpersec=args.msgpersec, report_interval=args.reportint,
+            total_size=args.totalsize, payload_gen=args.payload_gen
+        )
     except KeyboardInterrupt:
         if ofp:
             ofp.flush()

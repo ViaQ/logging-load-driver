@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # ViaQ logging load generator
 #
-# Copyright 2018 Red Hat, Inc.
+# Copyright 2021 Red Hat, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,14 +18,25 @@
 #
 
 import sys
-import os
 import time
 import argparse
 import signal
+import io
+import fcntl
 from collections import defaultdict
+try:
+    from systemd import journal
+except ImportError:
+    journal_available = False
+else:
+    journal_available = True
+
+F_SETPIPE_SZ = 1031  # Linux 2.6.35+
+F_GETPIPE_SZ = 1032  # Linux 2.6.35+
 
 REPORT_INTERVAL = 10
 MB = 1024 * 1024
+
 
 # if running verify-loader as a background process,
 # we can still do a kill -2 $pid to make it exit
@@ -33,7 +44,6 @@ MB = 1024 * 1024
 def handle_sig_int(signum, frame):
     raise KeyboardInterrupt
 
-signal.signal(signal.SIGINT, handle_sig_int)
 
 class Context(object):
 
@@ -62,7 +72,9 @@ class Context(object):
             if seq <= self.prev:
                 self.duplicates += 1
             else:
-                assert seq > (self.prev + 1), "Logic bomb! Should not be possible"
+                assert seq > (self.prev + 1), (
+                    "Logic bomb! Should not be possible"
+                )
                 self.skips += 1
                 # Since the sequence jumped ahead, save the new value as the
                 # previous in order to be sure to stay with the jump.
@@ -78,25 +90,30 @@ class Context(object):
             ret_val = True
         else:
             ret_val = False
+        return ret_val
 
 
 def print_stats(invocid, ctx, payload):
     try:
-        stats, _ = payload.rsplit(' ', 1)
-        rawvals = stats.strip()[:-1].split(' ')
+        stats, _ = payload.rsplit(b' ', 1)
+        rawvals = stats.strip()[:-1].split(b' ')
         vals = []
         for val in rawvals:
             if val:
                 vals.append(val)
         if len(vals) == 5:
-            timestamp, statseq, lclrate, gblrate = vals[1], vals[2], vals[3], vals[4]
+            timestamp, statseq, lclrate, gblrate = (
+                vals[1], vals[2], vals[3], vals[4]
+            )
         elif len(vals) == 8:
-            timestamp, statseq, lclrate, gblrate = vals[1], vals[2], vals[3], vals[7]
+            timestamp, statseq, lclrate, gblrate = (
+                vals[1], vals[2], vals[3], vals[7]
+            )
         else:
             print("Logic bomb!")
             sys.exit(1)
-    except Exception:
-        print("Error: ", payload)
+    except Exception as exc:
+        print(f"Error: ({exc})", payload)
         sys.stdout.flush()
     else:
         try:
@@ -108,8 +125,12 @@ def print_stats(invocid, ctx, payload):
             print("Error: ", payload)
             sys.stdout.flush()
         else:
-            assert ctx.prev == statseq
-            assert timestamp[-1] == 's'
+            assert ctx.prev == statseq, (
+                f"Unexpected stat sequence number"
+            )
+            assert timestamp[-1] == 115, (
+                f"invalid timestamp format: {timestamp!r}"
+            )
             now = time.time()
             print("%s: %.2fs (%5.2fs) %12.3f %12.3f %d %d %d %d" % (
                     invocid, ts, now - ts, lclrate, gblrate, statseq,
@@ -118,6 +139,8 @@ def print_stats(invocid, ctx, payload):
 
 
 def verify(input_gen, report_interval=REPORT_INTERVAL):
+    signal.signal(signal.SIGINT, handle_sig_int)
+
     ret_val = 0
 
     ignored_bytes = 0
@@ -135,12 +158,13 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
     try:
         for line in input_gen:
             line_len = len(line)
-            if not line.startswith("loader seq - "):
+            if not line.startswith(b"loader seq - "):
+                print(line[:80])
                 report_ignored_bytes += line_len
                 report_ignored_count += 1
             else:
                 try:
-                    _, invocid, seqval, payload = line.split('-', 4)
+                    _, invocid, seqval, payload = line.split(b'-', 4)
                 except Exception:
                     report_ignored_bytes += line_len
                     report_ignored_count += 1
@@ -157,11 +181,17 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                         prev = ctx.msg(seq, line_len)
                         if prev is not None:
                             # Bad record encountered, flag it
-                            print("%s: %d %d  <-" % (invocid, seq, prev))
+                            print(
+                                "%s: seq %d, prev %d  <-" % (
+                                    invocid, seq, prev
+                                )
+                            )
                             sys.stdout.flush()
-                        if payload.startswith(" (stats:"):
+                        if payload.startswith(b" (stats:"):
                             print_stats(invocid, ctx, payload)
-            if report_bytes_target > 0 and (report_bytes + report_ignored_bytes) >= report_bytes_target:
+            if report_bytes_target > 0 and (
+                (report_bytes + report_ignored_bytes) >= report_bytes_target
+            ):
                 now = time.time()
 
                 ignored_bytes += report_ignored_bytes
@@ -176,13 +206,17 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
                 for invocid, ctx in contexts.items():
                     report_count += ctx.report_count
                     if ctx.report():
-                        print("%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates))
+                        print(
+                            "%s: %d %d %d" % (
+                                invocid, ctx.count, ctx.skips, ctx.duplicates
+                            )
+                        )
                     total_bytes += ctx.bytes
                     total_count += ctx.count
 
-                print("interval read rate: %.3f MB/sec, %.3f/sec " \
-                      "(ignored %.3f MB/sec, %.3f/sec); " \
-                      "overall read rate: %.3f MB/sec %.3f/sec " \
+                print("interval read rate: %.3f MB/sec, %.3f/sec "
+                      "(ignored %.3f MB/sec, %.3f/sec); "
+                      "overall read rate: %.3f MB/sec %.3f/sec "
                       "(ignored %.3f MB/sec, %.3f/sec)" % (
                         (report_bytes / MB) / (now - report_start),
                         (report_count / (now - report_start)),
@@ -219,8 +253,12 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
         if ignored_count + total_count > 0:
             print("\n+++ verify-loader")
             for invocid, ctx in contexts.items():
-                print("%s: %d %d %d" % (invocid, ctx.count, ctx.skips, ctx.duplicates))
-            print("overall read rate: %.3f MB/sec %.3f/sec " \
+                print(
+                    "%s: %d %d %d" % (
+                        invocid, ctx.count, ctx.skips, ctx.duplicates
+                    )
+                )
+            print("overall read rate: %.3f MB/sec %.3f/sec "
                   "(ignored %.3f MB/sec, %.3f/sec)" % (
                     (total_bytes / MB) / (now - start),
                     (total_count / (now - start)),
@@ -234,19 +272,35 @@ def verify(input_gen, report_interval=REPORT_INTERVAL):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Message payload generator.')
-    parser.add_argument('file', metavar='FILE', nargs='?',
-            default='-',
-            help='file to read, if empty, stdin is used')
-    parser.add_argument('--report-interval', metavar='INTERVAL', dest='reportint', type=int,
-            default=REPORT_INTERVAL,
-            help='the # of megabytes of message data between reports (defaults to 10 MB)')
-    parser.add_argument('--read-journal', dest='readjournal', action="store_true",
-            help='read directly from the systemd journal (defaults to False)')
+    parser.add_argument(
+        'file', metavar='FILE', nargs='?',
+        default='-',
+        help='file to read, if empty, stdin is used'
+    )
+    parser.add_argument(
+        '--report-interval', metavar='INTERVAL', dest='reportint', type=int,
+        default=REPORT_INTERVAL,
+        help=(
+            'the # of megabytes of message data between reports'
+            ' (defaults to 10 MB)'
+        )
+    )
+    parser.add_argument(
+        '--read-journal', dest='readjournal', action="store_true",
+        help='read directly from the systemd journal (defaults to False)'
+    )
     args = parser.parse_args()
+
+    if args.readjournal and not journal_available:
+        print(
+            "systemd journal module not available, most likely running using"
+            " pypy3",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
     if args.file == '-':
         if args.readjournal:
-            from systemd import journal
             j = journal.Reader()
             # the fileno() method ends up creating the inotify file descriptor
             # which in turn prevents this client from leaking open journal log
@@ -254,18 +308,27 @@ if __name__ == '__main__':
             j.fileno()
             j.seek_tail()
             j.get_previous()
+
             def jreader():
                 while True:
                     for entry in j:
-                        yield entry['MESSAGE']
+                        yield entry['MESSAGE'].encode('utf-8')
                     j.wait()
             input_gen = jreader()
         else:
-            input_gen = os.fdopen(sys.stdin.fileno(), 'r', 1)
+            r_fd = sys.stdin.fileno()
+            try:
+                buffer_size = fcntl.fcntl(r_fd, F_GETPIPE_SZ)
+            except OSError:
+                # Default when not a pipe.
+                buffer_size = 65536
+            assert buffer_size == 65536
+            fo = io.FileIO(r_fd)
+            input_gen = io.BufferedReader(fo, buffer_size=buffer_size)
     else:
         if args.readjournal:
-            print("*** Warning *** ignoring request to read from the systemd" \
-                  " journal (--read-journal) since we have an actual file" \
-                  " argument provided (%s) ..." % args.file)
-        input_gen = open(args.file, 'r', 1)
+            print("*** Warning *** ignoring request to read from the systemd"
+                  " journal (--read-journal) since we have an actual file"
+                  f" argument provided ({args.file}) ...")
+        input_gen = open(args.file, 'rb', 1)
     sys.exit(verify(input_gen, args.reportint))
