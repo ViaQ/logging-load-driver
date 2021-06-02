@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: loader
+objects:
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: loader-service-account
+#
+# Deployment replicas of loader pods
+#
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: loader
+  spec:
+    replicas: ${{number_containers}}
+    selector:
+      matchLabels:
+        app: loader
+    template:
+      metadata:
+        labels:
+          app: loader
+      spec:
+        serviceAccountName: loader-service-account
+        containers:
+        - image: quay.io/portante/loader-container:latest
+          imagePullPolicy: Always
+          name: loader
+          env:
+          - name: MSGPERSEC
+            value:  ${{MSGPERSEC}}
+          - name: REPORT_INTERVAL
+            value:  ${{REPORT_INTERVAL}}
+          - name: TOTAL_SIZE
+            value:  ${{TOTAL_SIZE}}
+          - name: DISTRIBUTION
+            value:  ${{DISTRIBUTION}}
+          - name: PAYLOAD_GEN
+            value:  ${{PAYLOAD_GEN}}
+          - name: STDDEV
+            value:  ${{STDDEV}}
+          - name: OUTPUT
+            value:  ${{OUTPUT}}
+          - name: REPORT
+            value:  ${{REPORT}}
+          - name: PAYLOAD_SIZE
+            value: ${{PAYLOAD_SIZE}}
+
+parameters:
+- name: number_containers
+- name: MSGPERSEC
+  value: 0
+- name: REPORT_INTERVAL
+  value: 10
+- name: TOTAL_SIZE
+  value: 10000
+- name: DISTRIBUTION
+  value: gaussian
+- name: PAYLOAD_GEN
+  value: random
+- name: STDDEV
+  value: 32
+- name: OUTPUT
+  value: stdout
+- name: REPORT
+  value: inline
+- name: PAYLOAD_SIZE
+  value: 1024
