@@ -1,7 +1,11 @@
-all: build
+all: container/loader
+	buildah bud -t loader-container container/
 
-Docker/loader: loader
-	cp loader Docker/loader
+push:
+	buildah push loader-container:latest docker://quay.io/portante/loader-container:latest
 
-build: Docker/loader
-	docker build -t logging-load-driver Docker
+container/loader: loader
+	cp -a loader container/
+
+clean:
+	rm container/loader
