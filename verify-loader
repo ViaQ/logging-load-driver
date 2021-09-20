@@ -126,7 +126,8 @@ def print_stats(invocid, ctx, payload):
             sys.stdout.flush()
         else:
             assert ctx.prev == statseq, (
-                f"Unexpected stat sequence number"
+                f"Unexpected stat sequence number, {statseq:d},"
+                f" expected {ctx.prev:d}"
             )
             assert timestamp[-1] == 115, (
                 f"invalid timestamp format: {timestamp!r}"
