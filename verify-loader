@@ -156,13 +156,13 @@ def verify(
     ignored_count = 0
 
     report_bytes = 0
-    report_bytes_target = report_interval * MB
     report_ignored_bytes = 0
     report_ignored_count = 0
 
     contexts = defaultdict(Context)
     start = time.time()
     report_start = start
+    rptperiod = (report_interval, start)
 
     try:
         for line in input_gen:
@@ -199,10 +199,11 @@ def verify(
                             b" (stats:"
                         ):
                             print_stats(invocid, ctx, payload)
-            if report_bytes_target > 0 and (
-                (report_bytes + report_ignored_bytes) >= report_bytes_target
-            ):
-                now = time.time()
+            now = time.time()
+            if now >= rptperiod[1]:
+                rptperiod = (
+                    rptperiod[0], rptperiod[1] + rptperiod[0]
+                )
 
                 ignored_bytes += report_ignored_bytes
                 ignored_count += report_ignored_count
@@ -315,8 +316,8 @@ if __name__ == '__main__':
         '--report-interval', metavar='INTERVAL', dest='reportint', type=int,
         default=REPORT_INTERVAL,
         help=(
-            'the # of megabytes of message data between reports'
-            ' (defaults to 10 MB)'
+            'the # seconds between reports'
+            f' (defaults to {REPORT_INTERVAL} seconds)'
         )
     )
     parser.add_argument(

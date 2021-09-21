@@ -29,6 +29,7 @@ import argparse
 
 
 DEFAULT_STDDEV = 32
+REPORT_INTERVAL = 10
 
 
 def msgsizgen_fixed(stats, mean, stddev=None):
@@ -64,26 +65,24 @@ dist_methods = {
 
 class StatsCtx(object):
 
-    def __init__(self, msgpersec, rptint):
+    def __init__(self, msgpersec, rptint=1):
         self.start = self.past = time.time()
         self.seq = 0
         self.msgs = 0
         self.total_size = 0
-        self.report_size = 0
         self.msgpersec = msgpersec
         if msgpersec > 0:
             self.msgperiod = (1/msgpersec, self.start)
         else:
             self.msgperiod = None
-        self.rptint = rptint * (1024 * 1024)
+        self.rptperiod = (rptint, self.start)
 
     def nextseq(self, size):
+        now = time.time()
         self.seq += 1
         self.msgs += 1
         self.total_size += size
-        self.report_size += size
         if self.msgperiod is not None:
-            now = time.time()
             while now < self.msgperiod[1]:
                 sleep_window = self.msgperiod[1] - now
                 time.sleep(sleep_window)
@@ -93,9 +92,11 @@ class StatsCtx(object):
             self.msgperiod = (
                 self.msgperiod[0], self.msgperiod[1] + self.msgperiod[0]
             )
-        if self.report_size > self.rptint:
+        if now >= self.rptperiod[1]:
+            self.rptperiod = (
+                self.rptperiod[0], self.rptperiod[1] + self.rptperiod[0]
+            )
             report = True
-            self.report_size = 0
         else:
             report = False
         return size, self.seq, report
@@ -144,9 +145,9 @@ def load(
        is emitted using the output_method function, while statistics
        about the output rate are reported through the report_method.
 
-       The reports are generated once every 10,000 payloads, no
-       more than once a second by default. Both parameters can be
-       changed by the caller.
+       The reports are generated once every 10 secs, no more than
+       once a second by default. Both parameters can be changed by
+       the caller.
 
        The generated sequence number defaults to a width of 10.
 
@@ -250,7 +251,7 @@ if __name__ == '__main__':
         default=DEFAULT_STDDEV,
         help=(
             'the standard deviation to use with a random distribution'
-            ' (defaults to 32)'
+            f' (defaults to {DEFAULT_STDDEV})'
         )
     )
     parser.add_argument(
@@ -279,10 +280,10 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--report-interval', metavar='INTERVAL', dest='reportint', type=int,
-        default=10,
+        default=REPORT_INTERVAL,
         help=(
-            'the # of megabytes of message data between reports'
-            ' (defaults to 10 MB)'
+            'the # of seconds between reports'
+            f' (defaults to {REPORT_INTERVAL} secs)'
         )
     )
     parser.add_argument(
