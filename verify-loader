@@ -192,7 +192,7 @@ def verify(
                             # Bad record encountered, flag it
                             print(
                                 f"{invocid}: bad record, current sequence #:"
-                                f" {seq}, previous sequence #: {prev}",
+                                f" {seq:d}, previous sequence #: {prev:d}",
                                 flush=True
                             )
                         if emit_loader_stats and payload.startswith(
