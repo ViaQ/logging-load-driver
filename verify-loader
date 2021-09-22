@@ -369,7 +369,9 @@ if __name__ == '__main__':
             except OSError:
                 # Default when not a pipe.
                 buffer_size = 65536
-            assert buffer_size == 65536
+            assert buffer_size >= 4096, (
+                f"Expected pipe size to be >= 4096, was {buffer_size!r}"
+            )
             fo = io.FileIO(r_fd)
             input_gen = io.BufferedReader(fo, buffer_size=buffer_size)
     else:

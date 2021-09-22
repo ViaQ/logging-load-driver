@@ -1,0 +1,6 @@
+FROM registry.fedoraproject.org/fedora:34
+
+COPY ./nasty /usr/bin/nasty
+
+RUN chmod +x /usr/bin/nasty
+CMD /usr/bin/nasty
