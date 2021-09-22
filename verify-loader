@@ -149,7 +149,8 @@ def print_stats(invocid, ctx, payload):
 
 
 def verify(
-    input_gen, report_interval=REPORT_INTERVAL, emit_loader_stats=False
+    input_gen, report_interval=REPORT_INTERVAL, emit_loader_stats=False,
+    debug=False
 ):
     signal.signal(signal.SIGTERM, handle_sig_term)
 
@@ -171,7 +172,8 @@ def verify(
         for line in input_gen:
             line_len = len(line)
             if not line.startswith(b"loader seq - "):
-                print(line[:80])
+                if debug:
+                    print(f"verify-loader -- ignored {line[:80]}...")
                 report_ignored_bytes += line_len
                 report_ignored_count += 1
             else:
@@ -191,7 +193,7 @@ def verify(
                         invocid = invocid.strip()
                         ctx = contexts[invocid]
                         prev = ctx.msg(seq, line_len)
-                        if prev is not None:
+                        if debug and (prev is not None):
                             # Bad record encountered, flag it
                             print(
                                 f"verify-loader -- {invocid}: bad record,"
@@ -335,6 +337,10 @@ if __name__ == '__main__':
         '--read-journal', dest='readjournal', action="store_true",
         help='read directly from the systemd journal (defaults to False)'
     )
+    parser.add_argument(
+        '--debug', dest='debug', action="store_true",
+        help='Turn on debugging (defaults to False)'
+    )
     args = parser.parse_args()
 
     if args.readjournal and not journal_available:
@@ -386,4 +392,6 @@ if __name__ == '__main__':
                 f" argument provided ({args.file}) ..."
             )
         input_gen = open(args.file, 'rb', 1)
-    sys.exit(verify(input_gen, args.reportint, args.emitloaderstats))
+    sys.exit(
+        verify(input_gen, args.reportint, args.emitloaderstats, args.debug)
+    )
