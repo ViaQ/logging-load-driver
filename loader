@@ -26,6 +26,7 @@ import string
 import logging
 import logging.handlers
 import argparse
+import math
 
 
 DEFAULT_STDDEV = 32
@@ -70,12 +71,14 @@ class StatsCtx(object):
         self.seq = 0
         self.msgs = 0
         self.total_size = 0
+        self.skipped_periods = 0
+        self.skipped_report_periods = 0
         self.msgpersec = msgpersec
         if msgpersec > 0:
-            self.msgperiod = (1/msgpersec, self.start)
+            self.msgperiod = (1/msgpersec, self.start + 1/msgpersec)
         else:
             self.msgperiod = None
-        self.rptperiod = (rptint, self.start)
+        self.rptperiod = (rptint, self.start + rptint)
 
     def nextseq(self, size):
         now = time.time()
@@ -89,12 +92,37 @@ class StatsCtx(object):
                 now = time.time()
             # We have exited our rate-limit window, calculate next
             # window and continue
+            assert now >= self.msgperiod[1], (
+                f"Logic bomb! {now} < {self.msgperiod[1]}"
+            )
+            # Determine if we are in the immmediate next period,
+            # or how many periods we have skipped.
+            prev_period_end = self.msgperiod[1]
+            period_dist = now - prev_period_end
+            period_cnt = int(math.floor(period_dist / self.msgperiod[0]))
+            self.skipped_periods += period_cnt
             self.msgperiod = (
-                self.msgperiod[0], self.msgperiod[1] + self.msgperiod[0]
+                self.msgperiod[0], prev_period_end + (
+                    (period_cnt + 1) * self.msgperiod[0]
+                )
+            )
+            assert (self.msgperiod[1] - now) <= self.msgperiod[0], (
+                f"Period calc logic bomb: {prev_period_end}, {now},"
+                f" {period_dist!r}, {period_cnt!r}, {self.msgperiod[0]}"
             )
         if now >= self.rptperiod[1]:
+            prev_period_end = self.rptperiod[1]
+            period_dist = now - prev_period_end
+            period_cnt = int(math.floor(period_dist / self.rptperiod[0]))
+            self.skipped_periods += period_cnt
             self.rptperiod = (
-                self.rptperiod[0], self.rptperiod[1] + self.rptperiod[0]
+                self.rptperiod[0], prev_period_end + (
+                    (period_cnt + 1) * self.rptperiod[0]
+                )
+            )
+            assert (self.rptperiod[1] - now) <= self.rptperiod[0], (
+                f"Report period calc logic bomb: {prev_period_end}, {now},"
+                f" {period_dist!r}, {period_cnt!r}, {self.rptperiod[0]}"
             )
             report = True
         else:
@@ -116,8 +144,9 @@ class StatsCtx(object):
             notice = ""
         self.past = now
         self.msgs = 0
-        return "%.3fs %0*d %10.3f%s %10.3f" % (
-            now, seq_width, self.seq, msg_rate, notice, total_msg_rate
+        return "%.3fs %0*d %10.3f%s %10.3f %d %d" % (
+            now, seq_width, self.seq, msg_rate, notice, total_msg_rate,
+            self.skipped_periods, self.skipped_report_periods
         )
 
 
@@ -309,7 +338,12 @@ if __name__ == '__main__':
             ofp = open(args.output, "w", buffering=65536)
 
         def output_closure(payload):
-            ofp.write(payload + '\n')
+            ret = ofp.write(payload + '\n')
+            ofp.flush()
+            assert ret == len(payload) + 1, (
+                f"ofp.write(payload + '\n') return {ret!r},"
+                f" expected {len(payload) + 1}"
+            )
 
         output_method = output_closure
 
@@ -328,9 +362,13 @@ if __name__ == '__main__':
             rfp = open(args.report, "w")
 
         def report_closure(payload):
-            rfp.write(payload + '\n')
-
+            ret = rfp.write(payload + '\n')
             rfp.flush()
+            assert ret == len(payload) + 1, (
+                f"rfp.write(payload + '\n') return {ret!r},"
+                f" expected {len(payload) + 1}"
+            )
+
         report_method = report_closure
 
     try:

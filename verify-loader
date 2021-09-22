@@ -123,10 +123,12 @@ def print_stats(invocid, ctx, payload):
                 "Invalid floating point timestamp value encountered:"
                 f" {vals[1]}"
             )
-        if len(vals) == 5:
+        if len(vals) == 7:
             lclrate, gblrate = float(vals[3]), float(vals[4])
-        elif len(vals) == 8:
+            skp, skr = int(vals[5]), int(vals[6])
+        elif len(vals) == 10:
             lclrate, gblrate = float(vals[3]), float(vals[7])
+            skp, skr = int(vals[8]), int(vals[9])
         else:
             raise Exception("Logic bomb!")
     except Exception as exc:
@@ -138,9 +140,10 @@ def print_stats(invocid, ctx, payload):
     else:
         offset = now - timestamp
         print(
-            f"{invocid}: {now:.2f}s ({offset:5.2f}s) {lclrate:12.3f}"
+            f"verify-loader - loader stats ({invocid}): {now:.2f}s"
+            f" ({offset:4.2f}s) {lclrate:12.3f}"
             f" {gblrate:12.3f} {statseq:d} {ctx.count:d} {ctx.skips:d}"
-            f" {ctx.duplicates:d}",
+            f" {ctx.duplicates:d} {skp:d} {skr:d}",
             flush=True
         )
 
@@ -191,8 +194,9 @@ def verify(
                         if prev is not None:
                             # Bad record encountered, flag it
                             print(
-                                f"{invocid}: bad record, current sequence #:"
-                                f" {seq:d}, previous sequence #: {prev:d}",
+                                f"verify-loader -- {invocid}: bad record,"
+                                f" current sequence #: {seq:d}, previous"
+                                f" sequence #: {prev:d}",
                                 flush=True
                             )
                         if emit_loader_stats and payload.startswith(
